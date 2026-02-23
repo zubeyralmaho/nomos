@@ -1,0 +1,33 @@
+[package]
+name = "nomos-healer-guest"
+version = "0.1.0"
+edition = "2021"
+authors = ["Nomos Team"]
+license = "MIT"
+rust-version = "1.75"
+description = "WASM guest implementation for Nomos schema healer"
+
+[lib]
+crate-type = ["cdylib"]  # Required for WASM component
+
+[dependencies]
+# Minimal alloc support only - no JSON parsing libraries needed
+# The transformation is done via streaming byte manipulation
+
+# Minimal memory management
+# Note: No heavy allocator - use WASM built-in memory
+
+[profile.release]
+opt-level = "s"              # Size optimization for <500KB target
+lto = true
+codegen-units = 1
+panic = "abort"              # No unwinding in WASM
+strip = true
+
+[profile.release.package."*"]
+opt-level = "s"
+
+# Custom profile for smallest size
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"              # Maximum size optimization

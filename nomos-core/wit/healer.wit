@@ -1,0 +1,169 @@
+// Nomos Healer - WebAssembly Interface Types (WIT)
+//
+// This interface defines the contract between the Rust host and
+// WASM-sandboxed healing logic. Designed for minimal host↔guest
+// transitions with shared memory buffers.
+//
+// Version: 1.0.0
+// Target: WASI Preview 2 (Component Model)
+
+package nomos:healer@1.0.0;
+
+/// Core types shared between host and guest.
+interface types {
+    /// Opaque handle to a buffer region in shared linear memory.
+    /// The host writes input JSON here; guest reads it in-place.
+    type buffer-handle = u32;
+    
+    /// Healing operation enum - what transformation to apply.
+    enum operation {
+        /// Rename a field (key change)
+        rename,
+        /// Coerce value type (e.g., String -> Number)
+        coerce-type,
+        /// Insert default value for missing field
+        set-default,
+        /// Remove unexpected field
+        delete,
+    }
+    
+    /// JSON type identifiers (mirrors JsonType in Rust)
+    enum json-type {
+        null,
+        bool,
+        number,
+        string,
+        array,
+        object,
+    }
+    
+    /// A single healing instruction.
+    record healing-instruction {
+        /// Operation to perform
+        op: operation,
+        /// JSONPath to the target field (e.g., "$.user.id")
+        path: string,
+        /// Source field name (for rename operations)
+        source: option<string>,
+        /// Target field name (for rename) or value (for set-default)
+        target: option<string>,
+        /// Type coercion info
+        from-type: option<json-type>,
+        to-type: option<json-type>,
+        /// Confidence score for this operation (0.0 - 1.0)
+        confidence: float32,
+    }
+    
+    /// Result of a healing operation.
+    record healing-result {
+        /// Whether the healing succeeded
+        success: bool,
+        /// Length of output in output buffer
+        output-len: u32,
+        /// Error code if failed
+        error-code: option<u32>,
+        /// Number of operations applied
+        ops-applied: u32,
+        /// Processing time in nanoseconds
+        processing-ns: u64,
+    }
+    
+    /// Error codes returned by the healer.
+    enum error-code {
+        /// No error
+        ok,
+        /// Input JSON is malformed
+        parse-error,
+        /// Output buffer too small
+        buffer-overflow,
+        /// Referenced field not found
+        field-not-found,
+        /// Type coercion failed
+        coercion-failed,
+        /// Internal error
+        internal-error,
+    }
+}
+
+/// The main healer interface exported by the WASM component.
+interface healer {
+    use types.{buffer-handle, healing-instruction, healing-result, error-code};
+    
+    /// Initialize the healer with shared memory regions.
+    ///
+    /// Called once after instantiation. The host provides pointers
+    /// to pre-allocated regions in linear memory:
+    ///
+    /// - input-ptr/input-cap: Where host writes input JSON
+    /// - output-ptr/output-cap: Where guest writes healed output
+    ///
+    /// This avoids memory allocation on the hot path.
+    init: func(
+        input-ptr: u32,
+        input-cap: u32,
+        output-ptr: u32,
+        output-cap: u32
+    );
+    
+    /// Execute healing transformations on JSON in shared memory.
+    ///
+    /// # Arguments
+    /// - input-len: Actual length of input JSON (host wrote to input buffer)
+    /// - instructions-ptr: Pointer to serialized instructions in memory
+    /// - instructions-len: Length of serialized instructions
+    ///
+    /// # Returns
+    /// Result indicating success/failure and output length.
+    ///
+    /// # Memory Layout
+    /// The host is responsible for:
+    /// 1. Writing input JSON to [input-ptr, input-ptr + input-len)
+    /// 2. Writing instructions to [instructions-ptr, instructions-ptr + instructions-len)
+    /// 3. Reading output from [output-ptr, output-ptr + result.output-len)
+    heal: func(
+        input-len: u32,
+        instructions-ptr: u32,
+        instructions-len: u32
+    ) -> healing-result;
+    
+    /// Validate JSON against expected schema (fast path check).
+    ///
+    /// Returns true if JSON matches expected structure (no healing needed).
+    /// This is a quick fingerprint check, not full validation.
+    validate-fingerprint: func(
+        input-len: u32,
+        expected-fingerprint: u64
+    ) -> bool;
+    
+    /// Get the guest's protocol version for compatibility checks.
+    version: func() -> string;
+}
+
+/// Optional interface for schema-aware healing.
+interface schema-aware {
+    use types.{json-type};
+    
+    /// Register an expected schema for a route.
+    ///
+    /// The healer can use this to validate responses and
+    /// suggest healing operations proactively.
+    register-schema: func(
+        route-id: u32,
+        field-names: list<string>,
+        field-types: list<json-type>
+    );
+    
+    /// Compute schema fingerprint from JSON.
+    ///
+    /// Returns a 64-bit hash of the key structure.
+    compute-fingerprint: func(input-len: u32) -> u64;
+}
+
+/// The world definition - exported by WASM components.
+world nomos-healer {
+    /// Healer must export the main interface
+    export healer;
+    
+    /// Schema-aware healing is optional
+    export schema-aware;
+}

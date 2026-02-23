@@ -7,6 +7,7 @@
 //! - Zero-copy buffer handling where possible
 //! - Per-request arena allocation for transformations
 //! - Lock-free schema store access
+//! - eBPF fast path integration for route classification
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,8 +25,10 @@ use hyper::service::service_fn;
 use hyper_util::client::legacy::{connect::HttpConnector, Client};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, instrument, warn};
 
+use crate::ebpf::{EbpfConfig, RouteHealthUpdate};
 use crate::error::{NomosError, Result};
 use crate::middleware::{MiddlewareContext, MiddlewareResult, ResponseMiddleware};
 use crate::schema::{HttpMethod, RouteKey, SchemaStore};
@@ -55,6 +58,9 @@ pub struct ProxyConfig {
 
     /// Enable Nomos headers in response
     pub enable_nomos_headers: bool,
+
+    /// eBPF configuration (None = disabled)
+    pub ebpf: Option<EbpfConfig>,
 }
 
 impl Default for ProxyConfig {
@@ -65,6 +71,7 @@ impl Default for ProxyConfig {
             timeout_ms: 30_000,
             max_body_size: 10 * 1024 * 1024, // 10MB
             enable_nomos_headers: true,
+            ebpf: Some(EbpfConfig::default()),
         }
     }
 }
@@ -135,6 +142,13 @@ pub struct ProxyState {
 
     /// Metrics
     pub metrics: Arc<ProxyMetrics>,
+
+    /// WASM healer (hot-swappable via ModuleRegistry)
+    pub wasm_healer: Option<Arc<crate::wasm_host::ModuleRegistry>>,
+
+    /// Async channel for eBPF route health updates (non-blocking).
+    /// None if eBPF is disabled or failed to initialize.
+    pub route_health_tx: Option<mpsc::Sender<RouteHealthUpdate>>,
 }
 
 impl ProxyState {
@@ -143,6 +157,7 @@ impl ProxyState {
         config: ProxyConfig,
         schema_store: Arc<SchemaStore>,
         middleware: Arc<dyn ResponseMiddleware>,
+        route_health_tx: Option<mpsc::Sender<RouteHealthUpdate>>,
     ) -> Self {
         let client = Client::builder(hyper_util::rt::TokioExecutor::new())
             .http1_title_case_headers(true)
@@ -155,6 +170,46 @@ impl ProxyState {
             schema_store,
             middleware,
             metrics: Arc::new(ProxyMetrics::default()),
+            wasm_healer: None,
+            route_health_tx,
+        }
+    }
+    
+    /// Create proxy state with WASM healer.
+    pub fn with_wasm_healer(
+        config: ProxyConfig,
+        schema_store: Arc<SchemaStore>,
+        middleware: Arc<dyn ResponseMiddleware>,
+        wasm_healer: Arc<crate::wasm_host::ModuleRegistry>,
+        route_health_tx: Option<mpsc::Sender<RouteHealthUpdate>>,
+    ) -> Self {
+        Self::with_wasm_healer_and_metrics(
+            config, schema_store, middleware, wasm_healer, route_health_tx, None
+        )
+    }
+    
+    /// Create proxy state with WASM healer and shared metrics.
+    pub fn with_wasm_healer_and_metrics(
+        config: ProxyConfig,
+        schema_store: Arc<SchemaStore>,
+        middleware: Arc<dyn ResponseMiddleware>,
+        wasm_healer: Arc<crate::wasm_host::ModuleRegistry>,
+        route_health_tx: Option<mpsc::Sender<RouteHealthUpdate>>,
+        shared_metrics: Option<Arc<ProxyMetrics>>,
+    ) -> Self {
+        let client = Client::builder(hyper_util::rt::TokioExecutor::new())
+            .http1_title_case_headers(true)
+            .http1_preserve_header_case(true)
+            .build_http();
+
+        Self {
+            config,
+            client,
+            schema_store,
+            middleware,
+            metrics: shared_metrics.unwrap_or_else(|| Arc::new(ProxyMetrics::default())),
+            wasm_healer: Some(wasm_healer),
+            route_health_tx,
         }
     }
 }
@@ -356,6 +411,9 @@ async fn process_request(
             );
     }
 
+    // Send async route health feedback to eBPF (Nomos Law: never block response path)
+    send_route_health_feedback(&state.route_health_tx, &state.config.target_url, healed);
+
     // Set correct content-length
     response = response.header(http::header::CONTENT_LENGTH, final_body.len());
 
@@ -460,6 +518,69 @@ fn error_response(status: u16, message: &str) -> Response<Full<Bytes>> {
         .header("X-Nomos-Error", "true")
         .body(Full::new(Bytes::from(body)))
         .unwrap()
+}
+
+/// Send async route health feedback to eBPF (non-blocking).
+///
+/// This implements "Nomos Law": the feedback loop never blocks the response path.
+/// Uses try_send() to avoid blocking - if the channel is full, the update is
+/// dropped and a warning is logged. This is acceptable because:
+/// 1. The eBPF map will eventually be updated by subsequent requests
+/// 2. The fail-open policy means we never drop legitimate traffic
+/// 3. Backpressure indicates we're processing requests faster than eBPF can update
+#[inline]
+fn send_route_health_feedback(
+    tx: &Option<mpsc::Sender<RouteHealthUpdate>>,
+    target: &Uri,
+    healed: bool,
+) {
+    // Early return if channel not available
+    let Some(sender) = tx else {
+        return;
+    };
+
+    // Try to extract IP from target URL (skip if hostname)
+    let Some(host_str) = target.host() else {
+        return;
+    };
+
+    // Parse as IPv4 - skip DNS hostnames (they'd require async resolution)
+    let Ok(ip) = host_str.parse::<std::net::Ipv4Addr>() else {
+        // Not an IP literal, skip eBPF feedback for this route
+        // In production, you'd cache DNS resolution results
+        return;
+    };
+
+    let port = target.port_u16().unwrap_or(80);
+
+    // Create the update
+    let update = if healed {
+        RouteHealthUpdate::needs_healing(ip, port)
+    } else {
+        RouteHealthUpdate::healthy(ip, port)
+    };
+
+    // Non-blocking send - if channel is full, drop the update
+    match sender.try_send(update) {
+        Ok(()) => {
+            debug!(
+                ip = %ip,
+                port = port,
+                healed = healed,
+                "Sent route health feedback to eBPF"
+            );
+        }
+        Err(mpsc::error::TrySendError::Full(_)) => {
+            debug!(
+                ip = %ip,
+                port = port,
+                "Route health channel full, dropping update"
+            );
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => {
+            // Channel closed, eBPF subsystem shut down
+        }
+    }
 }
 
 #[cfg(test)]

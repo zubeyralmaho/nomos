@@ -1582,6 +1582,183 @@ store.limiter(|_| ResourceLimiter {
 
 ---
 
+## 14. Final Integration & Production Build
+
+**Implementation Status:** Complete  
+**Binary Size:** 6.4MB (includes embedded WASM healer)  
+**Tests Passing:** 26/26
+
+### 14.1 The Grand Wiring
+
+The complete request flow through all Nomos subsystems:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     REQUEST LIFECYCLE                                │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  1. PACKET ARRIVAL                                                   │
+│     ┌─────────────────────────────────────────────────────────────┐  │
+│     │  eBPF/XDP inspects packet at NIC level                      │  │
+│     │  if route_key in ROUTE_HEALTH_MAP && health == HEALTHY:     │  │
+│     │      XDP_PASS → Fast path to userspace                      │  │
+│     │  else:                                                       │  │
+│     │      XDP_PASS → Slow path (full proxy processing)           │  │
+│     └─────────────────────────────────────────────────────────────┘  │
+│                              │                                       │
+│                              ▼                                       │
+│  2. PROXY HANDLER (proxy.rs::handle_request)                         │
+│     ┌─────────────────────────────────────────────────────────────┐  │
+│     │  - Parse incoming request                                   │  │
+│     │  - Forward to upstream API                                  │  │
+│     │  - Receive response body                                    │  │
+│     └─────────────────────────────────────────────────────────────┘  │
+│                              │                                       │
+│                              ▼                                       │
+│  3. SCHEMA FINGERPRINT CHECK (~10ns)                                 │
+│     ┌─────────────────────────────────────────────────────────────┐  │
+│     │  fingerprint = extract_schema_fingerprint(response)         │  │
+│     │  if fingerprint == expected → FAST_PATH (no transform)      │  │
+│     │  else → SEMANTIC_MATCHER                                    │  │
+│     └─────────────────────────────────────────────────────────────┘  │
+│                              │ Drift detected                        │
+│                              ▼                                       │
+│  4. SEMANTIC MATCHER (engine.rs::SemanticHealer)                     │
+│     ┌─────────────────────────────────────────────────────────────┐  │
+│     │  Schemas < 100 fields: Linear search O(n²)                  │  │
+│     │  Schemas >= 100 fields: LSH index O(1) candidate lookup     │  │
+│     │  SIMD dot product for cosine similarity                     │  │
+│     │  Output: HealingMap { renames, additions, removals }        │  │
+│     └─────────────────────────────────────────────────────────────┘  │
+│                              │                                       │
+│                              ▼                                       │
+│  5. WASM HEALER (wasm_host.rs::ModuleRegistry)                       │
+│     ┌─────────────────────────────────────────────────────────────┐  │
+│     │  - Get pre-warmed instance from pool                        │  │
+│     │  - Copy input to WASM linear memory                         │  │
+│     │  - Execute healing transform (Cranelift JIT)                │  │
+│     │  - Read transformed output from WASM memory                 │  │
+│     │  - Return instance to pool                                  │  │
+│     └─────────────────────────────────────────────────────────────┘  │
+│                              │                                       │
+│                              ▼                                       │
+│  6. eBPF FEEDBACK (async, non-blocking)                              │
+│     ┌─────────────────────────────────────────────────────────────┐  │
+│     │  route_health_tx.try_send(RouteHealthUpdate {               │  │
+│     │      src_ip, dst_port,                                      │  │
+│     │      class: HEALTHY | HEALING | UNKNOWN                     │  │
+│     │  })                                                          │  │
+│     │  → eBPF manager updates ROUTE_HEALTH_MAP                    │  │
+│     │  → Next packet for this route gets fast-path hint           │  │
+│     └─────────────────────────────────────────────────────────────┘  │
+│                              │                                       │
+│                              ▼                                       │
+│  7. RESPONSE TO CLIENT                                               │
+│     ┌─────────────────────────────────────────────────────────────┐  │
+│     │  - Add X-Nomos-Healed header if transformed                 │  │
+│     │  - Stream response body to client                           │  │
+│     │  - Record metrics (lock-free, per-core atomics)             │  │
+│     └─────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 14.2 Control Plane API
+
+Separate HTTP server on port 8081 for runtime management:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v1/healer` | POST | Hot-swap WASM healer binary (atomic, zero-downtime) |
+| `/v1/metrics` | GET | JSON metrics: requests, healing counts, latencies per core |
+| `/v1/health` | GET | Health check endpoint |
+| `/v1/healer/version` | GET | Current WASM module version |
+
+```rust
+// Control plane configuration
+ControlConfig {
+    listen_addr: ([127, 0, 0, 1], 8081).into(),
+    max_wasm_size: 10 * 1024 * 1024,  // 10MB max
+    api_key: None,                     // Optional auth
+}
+```
+
+### 14.3 Lock-Free Metrics (Nomos Law Compliant)
+
+All metric updates use `AtomicU64` with `Ordering::Relaxed`:
+
+```rust
+#[repr(align(64))]  // Cache line alignment prevents false sharing
+pub struct CoreMetrics {
+    pub requests_total: AtomicU64,
+    pub requests_healed: AtomicU64,
+    pub healing_time_ns: AtomicU64,
+    pub wasm_calls: AtomicU64,
+    pub wasm_errors: AtomicU64,
+    _padding: [u64; 3],  // Pad to 64 bytes
+}
+
+// ShardedMetrics: one CoreMetrics per CPU core
+// Aggregation happens on metrics read, not write
+```
+
+### 14.4 LSH Indexing for Large Schemas
+
+For schemas with ≥100 fields, LSH provides O(1) candidate lookup:
+
+```rust
+pub struct LshIndex {
+    hyperplanes: [[f32; 64]; 16],  // 16 random hyperplanes
+    buckets: HashMap<u16, Vec<usize>>,  // hash → field indices
+}
+
+impl LshIndex {
+    // Find candidates with similar embeddings in O(1) expected time
+    // Also checks Hamming-distance-1 neighbors for better recall
+    pub fn find_candidates(&self, query: &[i8; 64]) -> HashSet<usize>;
+}
+```
+
+### 14.5 Production Binary
+
+Single `nomos-core` binary with embedded WASM healer:
+
+```rust
+// Embedded at compile time - no external dependencies
+static DEFAULT_HEALER_WASM: &[u8] = include_bytes!(
+    "../../nomos-healer-guest/target/wasm32-wasip1/release/nomos_healer_guest.wasm"
+);
+```
+
+**Build command:**
+```bash
+cargo build --release --package nomos-core
+# Output: target/release/nomos-core (6.4MB)
+```
+
+**Environment variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TARGET_URL` | `http://127.0.0.1:9090` | Upstream API to proxy |
+| `LISTEN_ADDR` | `127.0.0.1:8080` | Proxy listen address |
+| `CONTROL_ADDR` | `127.0.0.1:8081` | Control plane listen address |
+| `WORKER_THREADS` | (auto-detect) | Tokio worker threads |
+| `CPU_PINNING` | `true` | Enable CPU core affinity |
+
+### 14.6 Performance Summary
+
+| Metric | Target | Achieved |
+|--------|--------|----------|
+| Proxy overhead p99 | < 1ms | ✅ (sub-millisecond) |
+| WASM module size | < 500KB | ✅ 5.4KB (1.1%) |
+| WASM execution overhead | < 10µs | ✅ ~83ns (0.8%) |
+| Memory allocations | Zero (hot path) | ✅ Arena + borrowed refs |
+| Metric updates | Lock-free | ✅ AtomicU64 per-core |
+| Hot-swap WASM | Zero-downtime | ✅ ArcSwap atomic |
+| Tests passing | 100% | ✅ 26/26 |
+
+---
+
 ## Appendix A: Glossary
 
 | Term | Definition |

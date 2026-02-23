@@ -1,0 +1,15 @@
+[package]
+name = "nomos-ebpf-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types between Nomos eBPF kernel program and userspace"
+license = "MIT"
+
+[features]
+default = []
+# Enable userspace-only features (e.g., std, Debug impls, Pod trait)
+userspace = ["dep:aya"]
+
+[dependencies]
+# Aya for Pod trait implementation (userspace only)
+aya = { version = "0.13", optional = true }

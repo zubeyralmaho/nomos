@@ -59,7 +59,7 @@ impl From<&http::Method> for HttpMethod {
 ///
 /// Computed as XxHash64 of the JSON key structure.
 /// This allows O(1) drift detection before full validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct SchemaFingerprint(pub u64);
 
 impl SchemaFingerprint {

@@ -2,6 +2,13 @@
 resolver = "2"
 members = [
     "nomos-core",
+    "nomos-ebpf-common",
+]
+
+# eBPF and WASM crates excluded from default workspace build (requires special toolchain)
+exclude = [
+    "nomos-ebpf",
+    "nomos-healer-guest",  # Builds with --target wasm32-wasip1
 ]
 
 [workspace.package]
@@ -51,6 +58,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Benchmarking
 criterion = { version = "0.5", features = ["html_reports"] }
+
+# eBPF Userspace (Aya) - pinned to compatible versions
+aya = "0.13"
+aya-log = "0.2"
+
+# WASM Runtime (Wasmtime) - for sandboxed healers
+wasmtime = { version = "18.0", default-features = false, features = ["cranelift", "pooling-allocator", "parallel-compilation"] }
 
 [profile.release]
 opt-level = 3

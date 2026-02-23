@@ -1,5 +1,7 @@
 # Rust build artifacts
 /target/
+nomos-ebpf/target/
+nomos-healer-guest/target/
 
 # Cargo lock file (uncomment if this is a library)
 # Cargo.lock
@@ -20,3 +22,27 @@
 # Benchmark data
 *.profraw
 *.profdata
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+.pytest_cache/
+
+# eBPF artifacts
+*.bpf.o
+
+# WASM artifacts
+*.wasm
+
+# Test outputs
+tests/chaos_results/
+
+# Logs
+*.log
