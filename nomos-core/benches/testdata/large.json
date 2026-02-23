@@ -1,0 +1,136 @@
+{
+    "api_version": "2024.1",
+    "request_id": "req_abc123def456",
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "status": "success",
+    "data": {
+        "users": [
+            {
+                "id": "usr_001",
+                "username": "alice.johnson",
+                "email": "alice.johnson@example.com",
+                "full_name": "Alice Johnson",
+                "avatar_url": "https://cdn.example.com/avatars/alice.jpg",
+                "created_at": "2023-06-15T08:00:00Z",
+                "updated_at": "2024-01-14T15:30:00Z",
+                "profile": {
+                    "bio": "Software engineer passionate about distributed systems",
+                    "location": "San Francisco, CA",
+                    "website": "https://alicejohnson.dev",
+                    "company": "TechCorp Inc.",
+                    "timezone": "America/Los_Angeles"
+                },
+                "settings": {
+                    "notifications": {
+                        "email": true,
+                        "push": true,
+                        "sms": false
+                    },
+                    "privacy": {
+                        "show_email": false,
+                        "show_location": true
+                    },
+                    "theme": "dark",
+                    "language": "en-US"
+                },
+                "stats": {
+                    "posts_count": 142,
+                    "followers_count": 1250,
+                    "following_count": 89
+                }
+            },
+            {
+                "id": "usr_002",
+                "username": "bob.smith",
+                "email": "bob.smith@example.com",
+                "full_name": "Bob Smith",
+                "avatar_url": "https://cdn.example.com/avatars/bob.jpg",
+                "created_at": "2023-07-20T12:00:00Z",
+                "updated_at": "2024-01-10T09:15:00Z",
+                "profile": {
+                    "bio": "DevOps engineer and cloud architect",
+                    "location": "New York, NY",
+                    "website": "https://bobsmith.io",
+                    "company": "CloudFirst Solutions",
+                    "timezone": "America/New_York"
+                },
+                "settings": {
+                    "notifications": {
+                        "email": true,
+                        "push": false,
+                        "sms": true
+                    },
+                    "privacy": {
+                        "show_email": true,
+                        "show_location": true
+                    },
+                    "theme": "light",
+                    "language": "en-US"
+                },
+                "stats": {
+                    "posts_count": 87,
+                    "followers_count": 890,
+                    "following_count": 150
+                }
+            },
+            {
+                "id": "usr_003",
+                "username": "carol.white",
+                "email": "carol.white@example.com",
+                "full_name": "Carol White",
+                "avatar_url": "https://cdn.example.com/avatars/carol.jpg",
+                "created_at": "2023-08-05T16:30:00Z",
+                "updated_at": "2024-01-12T11:45:00Z",
+                "profile": {
+                    "bio": "Full-stack developer and open source contributor",
+                    "location": "Austin, TX",
+                    "website": "https://carolcodes.com",
+                    "company": "OpenSource Labs",
+                    "timezone": "America/Chicago"
+                },
+                "settings": {
+                    "notifications": {
+                        "email": false,
+                        "push": true,
+                        "sms": false
+                    },
+                    "privacy": {
+                        "show_email": false,
+                        "show_location": false
+                    },
+                    "theme": "auto",
+                    "language": "en-US"
+                },
+                "stats": {
+                    "posts_count": 203,
+                    "followers_count": 2100,
+                    "following_count": 75
+                }
+            }
+        ],
+        "pagination": {
+            "page": 1,
+            "per_page": 10,
+            "total_pages": 15,
+            "total_count": 142,
+            "has_next": true,
+            "has_prev": false
+        }
+    },
+    "meta": {
+        "rate_limit": {
+            "limit": 1000,
+            "remaining": 998,
+            "reset_at": "2024-01-15T11:00:00Z"
+        },
+        "cache": {
+            "hit": false,
+            "ttl": 300
+        },
+        "server": {
+            "region": "us-west-2",
+            "instance": "api-4a2b",
+            "version": "3.2.1"
+        }
+    }
+}

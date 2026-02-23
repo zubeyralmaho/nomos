@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "nomos-core",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Nomos Team"]
+license = "MIT"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async Runtime
+tokio = { version = "1.36", features = ["full", "rt-multi-thread", "parking_lot"] }
+
+# HTTP Stack - using hyper 1.x (latest stable)
+hyper = { version = "1.2", features = ["full", "http1", "http2", "server", "client"] }
+hyper-util = { version = "0.1", features = ["full", "tokio", "server", "server-auto", "client", "client-legacy"] }
+http-body-util = "0.1"
+http = "1.1"
+
+# Serialization - zero-copy
+simd-json = "0.13"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Memory Management
+bumpalo = { version = "3.15", features = ["collections"] }
+bytes = "1.5"
+
+# Concurrency
+arc-swap = "1.7"
+parking_lot = "0.12"
+crossbeam-utils = "0.8"
+
+# Thread Affinity
+core_affinity = "0.8"
+
+# Hashing
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+
+# Error Handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.bench]
+inherits = "release"
+debug = true
