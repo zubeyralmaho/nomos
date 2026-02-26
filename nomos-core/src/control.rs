@@ -365,6 +365,16 @@ async fn handle_control_request(
             handle_healer_upload(state, req).await
         }
         
+        // POST /v1/heal - Heal JSON with schema (for demo/testing)
+        (&http::Method::POST, "/v1/heal") => {
+            handle_heal_request(state, req).await
+        }
+        
+        // OPTIONS /v1/heal - CORS preflight
+        (&http::Method::OPTIONS, "/v1/heal") => {
+            Ok(cors_preflight_response())
+        }
+        
         // GET /v1/metrics - Get metrics JSON
         (&http::Method::GET, "/v1/metrics") => {
             handle_metrics_get(state).await
@@ -372,7 +382,12 @@ async fn handle_control_request(
         
         // GET /v1/health - Health check
         (&http::Method::GET, "/v1/health") => {
-            Ok(json_response(StatusCode::OK, r#"{"status": "healthy"}"#))
+            Ok(cors_json_response(StatusCode::OK, r#"{"status": "healthy"}"#))
+        }
+        
+        // OPTIONS /v1/health - CORS preflight
+        (&http::Method::OPTIONS, "/v1/health") => {
+            Ok(cors_preflight_response())
         }
         
         // GET /v1/healer/version - Get current healer version
@@ -440,6 +455,238 @@ async fn handle_healer_upload(
                 &format!(r#"{{"error": "Hot-swap failed: {}"}}"#, e)))
         }
     }
+}
+
+/// Handle POST /v1/heal - Heal JSON with provided schema (for demo/testing).
+async fn handle_heal_request(
+    _state: Arc<ControlState>,
+    req: Request<Incoming>,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    // Get expected schema from header
+    let schema_header = req.headers()
+        .get("X-Nomos-Schema")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    
+    // Read body
+    let body = req.into_body();
+    let collected = body.collect().await
+        .map_err(|e| {
+            error!(error = %e, "Failed to read heal request body");
+            e
+        })?;
+    let input_bytes = collected.to_bytes();
+    
+    // Parse input JSON
+    let input: serde_json::Value = match serde_json::from_slice(&input_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(cors_json_response(StatusCode::BAD_REQUEST,
+                &format!(r#"{{"error": "Invalid input JSON: {}"}}"#, e)));
+        }
+    };
+    
+    // Parse schema if provided
+    let schema: Option<serde_json::Value> = if let Some(ref s) = schema_header {
+        match serde_json::from_str(s) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                return Ok(cors_json_response(StatusCode::BAD_REQUEST,
+                    &format!(r#"{{"error": "Invalid schema JSON: {}"}}"#, e)));
+            }
+        }
+    } else {
+        None
+    };
+    
+    // Perform healing
+    let start = std::time::Instant::now();
+    let (healed, operations) = heal_json(&input, schema.as_ref());
+    let elapsed_us = start.elapsed().as_micros();
+    
+    // Build response
+    let ops_json: Vec<String> = operations.iter()
+        .map(|op| format!(
+            r#"{{"from": "{}", "to": "{}", "confidence": {:.2}, "algorithm": "{}"}}"#,
+            op.from, op.to, op.confidence, op.algorithm
+        ))
+        .collect();
+    
+    let response = format!(r#"{{
+  "data": {},
+  "operations": [{}],
+  "latency_us": {}
+}}"#,
+        serde_json::to_string_pretty(&healed).unwrap_or_default(),
+        ops_json.join(", "),
+        elapsed_us
+    );
+    
+    Ok(cors_json_response(StatusCode::OK, &response))
+}
+
+/// Healing operation result.
+struct HealOp {
+    from: String,
+    to: String,
+    confidence: f64,
+    algorithm: String,
+}
+
+/// Perform JSON healing based on schema.
+fn heal_json(input: &serde_json::Value, schema: Option<&serde_json::Value>) -> (serde_json::Value, Vec<HealOp>) {
+    let mut operations = Vec::new();
+    
+    // If no schema, return input as-is
+    let schema = match schema {
+        Some(s) => s,
+        None => return (input.clone(), operations),
+    };
+    
+    // Get schema keys
+    let schema_keys: Vec<&str> = match schema.as_object() {
+        Some(obj) => obj.keys().map(|s| s.as_str()).collect(),
+        None => return (input.clone(), operations),
+    };
+    
+    // Flatten input to get all keys and values
+    let flat_input = flatten_json(input, "");
+    
+    // Build healed output
+    let mut healed = serde_json::Map::new();
+    
+    for schema_key in &schema_keys {
+        // Find best match from input
+        let mut best_match: Option<(&str, f64)> = None;
+        
+        for (input_key, _) in &flat_input {
+            let score = string_similarity(
+                &input_key.to_lowercase().replace('.', ""),
+                &schema_key.to_lowercase()
+            );
+            
+            if score > 0.5 {
+                if best_match.is_none() || score > best_match.unwrap().1 {
+                    best_match = Some((input_key.as_str(), score));
+                }
+            }
+        }
+        
+        if let Some((input_key, confidence)) = best_match {
+            if let Some(value) = flat_input.get(input_key) {
+                healed.insert(schema_key.to_string(), value.clone());
+                
+                // Only record op if key changed
+                if input_key != *schema_key {
+                    operations.push(HealOp {
+                        from: input_key.to_string(),
+                        to: schema_key.to_string(),
+                        confidence,
+                        algorithm: if confidence > 0.9 { "exact_match" }
+                            else if confidence > 0.7 { "jaro_winkler" }
+                            else { "levenshtein" }.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    
+    (serde_json::Value::Object(healed), operations)
+}
+
+/// Flatten nested JSON to dot-notation keys.
+fn flatten_json(value: &serde_json::Value, prefix: &str) -> std::collections::HashMap<String, serde_json::Value> {
+    let mut result = std::collections::HashMap::new();
+    
+    match value {
+        serde_json::Value::Object(obj) => {
+            for (key, val) in obj {
+                let new_prefix = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{}.{}", prefix, key)
+                };
+                
+                if val.is_object() {
+                    result.extend(flatten_json(val, &new_prefix));
+                } else {
+                    result.insert(new_prefix, val.clone());
+                }
+            }
+        }
+        _ => {
+            if !prefix.is_empty() {
+                result.insert(prefix.to_string(), value.clone());
+            }
+        }
+    }
+    
+    result
+}
+
+/// Calculate string similarity (simplified Jaro-Winkler-like).
+fn string_similarity(s1: &str, s2: &str) -> f64 {
+    if s1 == s2 { return 1.0; }
+    if s1.is_empty() || s2.is_empty() { return 0.0; }
+    
+    // Check if one contains the other (for camelCase/snake_case conversions)
+    let s1_normalized = s1.replace('_', "").to_lowercase();
+    let s2_normalized = s2.replace('_', "").to_lowercase();
+    
+    if s1_normalized == s2_normalized {
+        return 0.95;
+    }
+    
+    if s1_normalized.contains(&s2_normalized) || s2_normalized.contains(&s1_normalized) {
+        return 0.85;
+    }
+    
+    // Levenshtein-based similarity
+    let len1 = s1.chars().count();
+    let len2 = s2.chars().count();
+    let max_len = len1.max(len2);
+    
+    let mut matrix: Vec<Vec<usize>> = vec![vec![0; len2 + 1]; len1 + 1];
+    
+    for i in 0..=len1 { matrix[i][0] = i; }
+    for j in 0..=len2 { matrix[0][j] = j; }
+    
+    for (i, c1) in s1.chars().enumerate() {
+        for (j, c2) in s2.chars().enumerate() {
+            let cost = if c1 == c2 { 0 } else { 1 };
+            matrix[i + 1][j + 1] = (matrix[i][j + 1] + 1)
+                .min(matrix[i + 1][j] + 1)
+                .min(matrix[i][j] + cost);
+        }
+    }
+    
+    let distance = matrix[len1][len2];
+    1.0 - (distance as f64 / max_len as f64)
+}
+
+/// Create a JSON response with CORS headers.
+fn cors_json_response(status: StatusCode, body: &str) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(status)
+        .header("Content-Type", "application/json")
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Content-Type, X-Nomos-Schema, X-API-Key")
+        .header("X-Nomos-Control", "true")
+        .body(Full::new(Bytes::from(body.to_owned())))
+        .unwrap()
+}
+
+/// Create CORS preflight response.
+fn cors_preflight_response() -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Content-Type, X-Nomos-Schema, X-API-Key")
+        .header("Access-Control-Max-Age", "86400")
+        .body(Full::new(Bytes::new()))
+        .unwrap()
 }
 
 /// Handle GET /v1/metrics - Return metrics JSON.

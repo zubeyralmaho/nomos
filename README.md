@@ -52,7 +52,7 @@ Nomos **heals** these changes in real-time:
 
 ```bash
 # Clone and build
-git clone https://github.com/zubeyr-almaho/nomos.git
+git clone https://github.com/zubeyralmaho/nomos.git
 cd nomos
 cargo build --release
 
@@ -149,6 +149,49 @@ Nomos uses **5 NLP algorithms** in a weighted ensemble:
 | `abbrev` | Abbreviations | `desc`, `addr`, `tel` |
 | `legacy` | Legacy naming | `usr_nm`, `crt_dt` |
 | `mixed` | All patterns combined | - |
+
+---
+
+## eBPF Acceleration (Optional)
+
+Nomos includes an **XDP (eXpress Data Path)** eBPF program for kernel-level packet classification. This enables:
+
+- **Fast-path bypass**: Healthy routes skip userspace entirely
+- **Circuit breaker**: Drop blocked traffic at kernel level (XDP_DROP)
+- **Zero-copy stats**: Per-CPU counters without atomic contention
+
+### Build eBPF
+
+```bash
+# Prerequisites: nightly Rust + rust-src + bpf-linker
+rustup install nightly
+rustup component add rust-src --toolchain nightly
+cargo install bpf-linker
+
+# Build XDP program
+./build-ebpf.sh
+
+# Output: target/ebpf/nomos-xdp.o
+```
+
+### Load XDP Program
+
+```bash
+# Attach to interface (requires root)
+sudo bpftool prog load target/ebpf/nomos-xdp.o /sys/fs/bpf/nomos_xdp
+sudo bpftool net attach xdp pinned /sys/fs/bpf/nomos_xdp dev eth0
+
+# Or let nomos-core auto-load
+sudo ./target/release/nomos-core --ebpf
+```
+
+### Route Classification
+
+| Class | XDP Action | Description |
+|-------|------------|-------------|
+| Healthy | XDP_PASS (fast) | Schema matches, minimal processing |
+| NeedsHealing | XDP_PASS (slow) | Needs transformation in userspace |
+| Blocked | XDP_DROP | Circuit breaker open |
 
 ---
 

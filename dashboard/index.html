@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nomos Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔧</text></svg>">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="logo">
+            <h1>Nomos</h1>
+            <span class="tagline">It never stops.</span>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item active" data-section="overview">
+                <span class="icon">📊</span>
+                <span>Overview</span>
+            </li>
+            <li class="nav-item" data-section="healing">
+                <span class="icon">🔧</span>
+                <span>Healing</span>
+            </li>
+            <li class="nav-item" data-section="nlp">
+                <span class="icon">🧠</span>
+                <span>NLP Engine</span>
+            </li>
+            <li class="nav-item" data-section="logs">
+                <span class="icon">📝</span>
+                <span>Logs</span>
+            </li>
+            <li class="nav-item" data-section="settings">
+                <span class="icon">⚙️</span>
+                <span>Settings</span>
+            </li>
+        </ul>
+        <div class="status-indicator">
+            <span class="status-dot" id="connection-status"></span>
+            <span id="connection-text">Connecting...</span>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <!-- Overview Section -->
+        <section id="overview" class="section active">
+            <header class="section-header">
+                <h2>System Overview</h2>
+                <span class="last-updated">Last updated: <span id="last-update-time">--</span></span>
+            </header>
+
+            <div class="metrics-grid">
+                <div class="metric-card primary">
+                    <div class="metric-icon">⚡</div>
+                    <div class="metric-info">
+                        <span class="metric-value" id="metric-latency">--</span>
+                        <span class="metric-label">p99 Latency</span>
+                    </div>
+                    <div class="metric-status good">
+                        <span class="status-text">Nomos Law: OK</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">📈</div>
+                    <div class="metric-info">
+                        <span class="metric-value" id="metric-rps">--</span>
+                        <span class="metric-label">Requests/sec</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">✅</div>
+                    <div class="metric-info">
+                        <span class="metric-value" id="metric-success">--</span>
+                        <span class="metric-label">Success Rate</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">🔧</div>
+                    <div class="metric-info">
+                        <span class="metric-value" id="metric-healed">--</span>
+                        <span class="metric-label">Healed Requests</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>Latency Distribution</h3>
+                    <div class="chart-container">
+                        <canvas id="latency-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Throughput (Last 60s)</h3>
+                    <div class="chart-container">
+                        <canvas id="throughput-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-cards">
+                <div class="info-card">
+                    <h3>System Health</h3>
+                    <div class="health-grid">
+                        <div class="health-item">
+                            <span class="health-label">Proxy</span>
+                            <span class="health-status healthy" id="health-proxy">Healthy</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="health-label">Upstream</span>
+                            <span class="health-status healthy" id="health-upstream">Connected</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="health-label">NLP Engine</span>
+                            <span class="health-status healthy" id="health-nlp">Active</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="health-label">eBPF</span>
+                            <span class="health-status warning" id="health-ebpf">Disabled</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-card">
+                    <h3>Quick Stats</h3>
+                    <div class="stats-list">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Requests</span>
+                            <span class="stat-value" id="stat-total">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Healed</span>
+                            <span class="stat-value" id="stat-healed">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Healing Patterns</span>
+                            <span class="stat-value" id="stat-patterns">165+</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Uptime</span>
+                            <span class="stat-value" id="stat-uptime">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Healing Section -->
+        <section id="healing" class="section">
+            <header class="section-header">
+                <h2>Healing Operations</h2>
+                <div class="section-actions">
+                    <button class="btn btn-secondary" id="clear-history">Clear History</button>
+                    <button class="btn btn-primary" id="test-healing">Test Healing</button>
+                </div>
+            </header>
+
+            <div class="healing-demo">
+                <h3>Live Demo</h3>
+                <div class="demo-container">
+                    <div class="demo-input">
+                        <h4>Input (Drifted)</h4>
+                        <pre id="demo-input-json">{
+  "userId": "123",
+  "userName": "Alice",
+  "emailAddress": "alice@example.com"
+}</pre>
+                    </div>
+                    <div class="demo-arrow">→</div>
+                    <div class="demo-output">
+                        <h4>Output (Healed)</h4>
+                        <pre id="demo-output-json">{
+  "user_id": "123",
+  "user_name": "Alice",
+  "email_address": "alice@example.com"
+}</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="healing-history">
+                <h3>Recent Operations</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Operation</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody id="healing-history-body">
+                        <tr>
+                            <td>12:34:56</td>
+                            <td><span class="badge badge-rename">RENAME</span></td>
+                            <td><code>userId</code></td>
+                            <td><code>user_id</code></td>
+                            <td>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" style="width: 95%"></div>
+                                    <span>0.95</span>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>12:34:56</td>
+                            <td><span class="badge badge-rename">RENAME</span></td>
+                            <td><code>userName</code></td>
+                            <td><code>user_name</code></td>
+                            <td>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" style="width: 92%"></div>
+                                    <span>0.92</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="healing-patterns">
+                <h3>Supported Patterns</h3>
+                <div class="patterns-grid">
+                    <div class="pattern-card">
+                        <h4>CamelCase → snake_case</h4>
+                        <code>userId → user_id</code>
+                        <span class="pattern-count">16 patterns</span>
+                    </div>
+                    <div class="pattern-card">
+                        <h4>API v2 Renames</h4>
+                        <code>id → user_id</code>
+                        <span class="pattern-count">13 patterns</span>
+                    </div>
+                    <div class="pattern-card">
+                        <h4>Abbreviations</h4>
+                        <code>desc → description</code>
+                        <span class="pattern-count">30 patterns</span>
+                    </div>
+                    <div class="pattern-card">
+                        <h4>Nested Flattening</h4>
+                        <code>user.name → user_name</code>
+                        <span class="pattern-count">40+ patterns</span>
+                    </div>
+                    <div class="pattern-card">
+                        <h4>Typo Correction</h4>
+                        <code>emial → email</code>
+                        <span class="pattern-count">18 patterns</span>
+                    </div>
+                    <div class="pattern-card">
+                        <h4>Legacy Names</h4>
+                        <code>usr_nm → user_name</code>
+                        <span class="pattern-count">17 patterns</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- NLP Section -->
+        <section id="nlp" class="section">
+            <header class="section-header">
+                <h2>NLP Engine</h2>
+            </header>
+
+            <div class="nlp-tester">
+                <h3>Algorithm Tester</h3>
+                <div class="tester-inputs">
+                    <div class="input-group">
+                        <label for="nlp-input-a">String A</label>
+                        <input type="text" id="nlp-input-a" value="user_id" placeholder="Enter first string">
+                    </div>
+                    <div class="input-group">
+                        <label for="nlp-input-b">String B</label>
+                        <input type="text" id="nlp-input-b" value="userId" placeholder="Enter second string">
+                    </div>
+                    <button class="btn btn-primary" id="nlp-compare">Compare</button>
+                </div>
+
+                <div class="nlp-results" id="nlp-results">
+                    <div class="result-card">
+                        <h4>Levenshtein</h4>
+                        <div class="result-bar">
+                            <div class="result-fill" style="width: 71%"></div>
+                        </div>
+                        <span class="result-value">0.714</span>
+                        <p class="result-desc">Edit distance normalized</p>
+                    </div>
+                    <div class="result-card">
+                        <h4>Jaro</h4>
+                        <div class="result-bar">
+                            <div class="result-fill" style="width: 88%"></div>
+                        </div>
+                        <span class="result-value">0.881</span>
+                        <p class="result-desc">Character matching</p>
+                    </div>
+                    <div class="result-card">
+                        <h4>Jaro-Winkler</h4>
+                        <div class="result-bar">
+                            <div class="result-fill" style="width: 90%"></div>
+                        </div>
+                        <span class="result-value">0.905</span>
+                        <p class="result-desc">With prefix bonus</p>
+                    </div>
+                    <div class="result-card">
+                        <h4>TF-IDF</h4>
+                        <div class="result-bar">
+                            <div class="result-fill" style="width: 67%"></div>
+                        </div>
+                        <span class="result-value">0.667</span>
+                        <p class="result-desc">N-gram similarity</p>
+                    </div>
+                    <div class="result-card highlight">
+                        <h4>Combined</h4>
+                        <div class="result-bar">
+                            <div class="result-fill" style="width: 100%"></div>
+                        </div>
+                        <span class="result-value">1.000</span>
+                        <p class="result-desc">Weighted ensemble</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nlp-info">
+                <h3>Algorithm Details</h3>
+                <div class="algorithm-cards">
+                    <div class="algo-card">
+                        <h4>🔤 Levenshtein Distance</h4>
+                        <p>Calculates the minimum number of single-character edits (insertions, deletions, substitutions) required to change one string into another.</p>
+                        <div class="algo-meta">
+                            <span class="complexity">O(m×n)</span>
+                            <span class="weight">Weight: 20%</span>
+                        </div>
+                    </div>
+                    <div class="algo-card">
+                        <h4>📊 Jaro Similarity</h4>
+                        <p>Measures similarity by counting matching characters within a window and transpositions. Good for short strings and names.</p>
+                        <div class="algo-meta">
+                            <span class="complexity">O(m×n)</span>
+                            <span class="weight">Base for J-W</span>
+                        </div>
+                    </div>
+                    <div class="algo-card">
+                        <h4>🎯 Jaro-Winkler</h4>
+                        <p>Extends Jaro by giving higher scores to strings that match from the beginning. Ideal for field names with common prefixes.</p>
+                        <div class="algo-meta">
+                            <span class="complexity">O(m×n)</span>
+                            <span class="weight">Weight: 25%</span>
+                        </div>
+                    </div>
+                    <div class="algo-card">
+                        <h4>📈 N-gram TF-IDF</h4>
+                        <p>Compares strings using trigram (3-character) frequency analysis. Captures structural similarity patterns.</p>
+                        <div class="algo-meta">
+                            <span class="complexity">O(n)</span>
+                            <span class="weight">Weight: 20%</span>
+                        </div>
+                    </div>
+                    <div class="algo-card">
+                        <h4>📚 Synonym Dictionary</h4>
+                        <p>Looks up semantic equivalences like user↔person, email↔mail. 25 groups with ~120 words.</p>
+                        <div class="algo-meta">
+                            <span class="complexity">O(1)</span>
+                            <span class="weight">Weight: 35%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Logs Section -->
+        <section id="logs" class="section">
+            <header class="section-header">
+                <h2>System Logs</h2>
+                <div class="section-actions">
+                    <select id="log-level" class="select">
+                        <option value="all">All Levels</option>
+                        <option value="error">Errors</option>
+                        <option value="warn">Warnings</option>
+                        <option value="info" selected>Info</option>
+                        <option value="debug">Debug</option>
+                    </select>
+                    <button class="btn btn-secondary" id="clear-logs">Clear</button>
+                    <button class="btn btn-secondary" id="export-logs">Export</button>
+                </div>
+            </header>
+
+            <div class="log-container">
+                <div class="log-entry info">
+                    <span class="log-time">12:34:56.789</span>
+                    <span class="log-level">INFO</span>
+                    <span class="log-message">Nomos proxy started on 0.0.0.0:8080</span>
+                </div>
+                <div class="log-entry info">
+                    <span class="log-time">12:34:56.790</span>
+                    <span class="log-level">INFO</span>
+                    <span class="log-message">Control plane listening on 0.0.0.0:8081</span>
+                </div>
+                <div class="log-entry info">
+                    <span class="log-time">12:34:57.001</span>
+                    <span class="log-level">INFO</span>
+                    <span class="log-message">HEAL: userId → user_id | Confidence: 0.95</span>
+                </div>
+                <div class="log-entry warn">
+                    <span class="log-time">12:35:01.234</span>
+                    <span class="log-level">WARN</span>
+                    <span class="log-message">eBPF not available: running in userspace mode</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings" class="section">
+            <header class="section-header">
+                <h2>Settings</h2>
+            </header>
+
+            <div class="settings-grid">
+                <div class="settings-card">
+                    <h3>Proxy Configuration</h3>
+                    <div class="setting-item">
+                        <label for="upstream-host">Upstream Host</label>
+                        <input type="text" id="upstream-host" value="localhost" disabled>
+                    </div>
+                    <div class="setting-item">
+                        <label for="upstream-port">Upstream Port</label>
+                        <input type="number" id="upstream-port" value="9090" disabled>
+                    </div>
+                    <div class="setting-item">
+                        <label for="listen-port">Listen Port</label>
+                        <input type="number" id="listen-port" value="8080" disabled>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Healing Configuration</h3>
+                    <div class="setting-item">
+                        <label for="confidence-threshold">Confidence Threshold</label>
+                        <input type="range" id="confidence-threshold" min="0" max="100" value="70">
+                        <span class="range-value">0.70</span>
+                    </div>
+                    <div class="setting-item">
+                        <label for="enable-healing">Enable Healing</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enable-healing" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label for="enable-nested">Nested Flattening</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enable-nested" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Performance</h3>
+                    <div class="setting-item">
+                        <label for="enable-ebpf">eBPF Acceleration</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enable-ebpf">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="setting-hint">Requires root privileges</span>
+                    </div>
+                    <div class="setting-item">
+                        <label for="enable-simd">SIMD Optimization</label>
+                        <label class="switch">
+                            <input type="checkbox" id="enable-simd" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>About</h3>
+                    <div class="about-info">
+                        <p><strong>Nomos</strong> v0.2.0</p>
+                        <p>Zero-latency schema-healing proxy</p>
+                        <p class="tagline">"It never stops."</p>
+                        <hr>
+                        <p>Built with Rust, Tokio, simd-json</p>
+                        <p>NLP: 5 algorithms, 165+ patterns</p>
+                        <p>License: MIT</p>
+                        <hr>
+                        <a href="https://github.com/zubeyralmaho/nomos" target="_blank">GitHub</a> |
+                        <a href="BENCHMARK_REPORT.md" target="_blank">Benchmarks</a> |
+                        <a href="architecture.md" target="_blank">Architecture</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
