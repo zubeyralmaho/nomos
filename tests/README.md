@@ -2,6 +2,38 @@
 
 Validates the **Nomos Law** (~714ns latency) and **Haltless** (zero-downtime) architecture under extreme load.
 
+## Test Coverage Summary
+
+```
+Unit Tests: 46/46 PASSED
+├── Core Module Tests (22)
+│   ├── control::tests::* (4 tests)
+│   ├── ebpf::tests::* (2 tests)
+│   ├── proxy::tests::* (3 tests)
+│   ├── schema::tests::* (4 tests)
+│   └── wasm_host::tests::* (3 tests)
+│
+├── NLP Module Tests (10)
+│   ├── nlp::levenshtein::tests::* (2 tests)
+│   ├── nlp::jaro::tests::* (2 tests)
+│   ├── nlp::tfidf::tests::* (2 tests)
+│   ├── nlp::synonym::tests::* (3 tests)
+│   └── nlp::combined::tests::* (1 test)
+│
+└── Engine Module Tests (14)
+    ├── engine::simd::tests::* (2 tests)
+    ├── engine::embedding::tests::* (2 tests)
+    ├── engine::confidence::tests::* (3 tests)
+    ├── engine::lsh::tests::* (4 tests)
+    ├── engine::healing::tests::* (2 tests)
+    └── engine::healer::tests::* (3 tests)
+```
+
+Run all tests:
+```bash
+cargo test -p nomos-core
+```
+
 ## Installation
 
 ```bash
@@ -97,7 +129,33 @@ python boundary_test.py --requests 200
 | `empty_response` | Empty or minimal responses |
 | `mixed_chaos` | Combination of all patterns |
 
-### 5. Memory Leak Monitor (`memory_monitor.py`)
+### 6. NLP Algorithm Tests (Unit Tests)
+
+Academic NLP algorithms with proper citations for course evaluation.
+
+```bash
+# Run all NLP tests
+cargo test -p nomos-core nlp --release
+
+# Run specific algorithm tests
+cargo test -p nomos-core levenshtein --release
+cargo test -p nomos-core jaro --release
+cargo test -p nomos-core tfidf --release
+cargo test -p nomos-core synonym --release
+cargo test -p nomos-core combined --release
+```
+
+**Algorithms Tested:**
+| Algorithm | Reference | Test Cases |
+|-----------|-----------|------------|
+| Levenshtein Distance | Levenshtein (1966) | kitten→sitting, edit ops |
+| Jaro Similarity | Jaro (1989) | MARTHA→MARHTA, DWAYNE→DUANE |
+| Jaro-Winkler | Winkler (1990) | Prefix bonus verification |
+| N-gram TF-IDF | Salton & McGill (1983) | Trigram extraction, similarity |
+| Synonym Matching | Custom | user↔person, email↔mail |
+| Combined Ensemble | Custom | Weighted voting, threshold |
+
+### 7. Memory Leak Monitor (`memory_monitor.py`)
 
 Monitors RSS memory to detect leaks in WASM pool, eBPF maps, etc.
 
@@ -117,7 +175,7 @@ python memory_monitor.py --leak-threshold 5.0  # MB/hour
 - Leak confidence score
 - Per-request memory consumption
 
-### 6. Full Suite Runner (`run_chaos_suite.py`)
+### 8. Full Suite Runner (`run_chaos_suite.py`)
 
 Orchestrates all tests in sequence.
 

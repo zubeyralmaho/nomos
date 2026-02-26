@@ -18,6 +18,7 @@ pub mod ebpf;
 pub mod engine;
 pub mod error;
 pub mod middleware;
+pub mod nlp;
 pub mod proxy;
 pub mod runtime;
 pub mod schema;
