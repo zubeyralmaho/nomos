@@ -994,6 +994,7 @@ dependencies = [
  "nomos-ebpf-common",
  "parking_lot",
  "serde",
+ "serde_json",
  "simd-json",
  "thiserror",
  "tokio",

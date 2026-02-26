@@ -53,6 +53,9 @@ const ENV_WORKER_THREADS: &str = "WORKER_THREADS";
 /// Environment variable for CPU pinning
 const ENV_CPU_PINNING: &str = "CPU_PINNING";
 
+/// Environment variable for eBPF object path
+const ENV_EBPF_PATH: &str = "NOMOS_EBPF_PATH";
+
 fn main() {
     // Initialize tracing
     init_tracing();
@@ -325,10 +328,19 @@ fn build_config() -> ProxyConfig {
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| "http://127.0.0.1:9090".parse().unwrap());
 
+    // eBPF configuration
+    let ebpf_path = env::var(ENV_EBPF_PATH).ok();
+    let ebpf_config = ebpf_path.map(|path| EbpfConfig {
+        enabled: true,
+        ebpf_object_path: Some(path),
+        ..Default::default()
+    });
+
     ProxyConfig {
         listen_addr,
         target_url,
         enable_nomos_headers: true,
+        ebpf: ebpf_config,
         ..Default::default()
     }
 }

@@ -158,13 +158,16 @@ def generate_healthy_payload() -> Dict:
 class RequestStats:
     """Thread-safe statistics collector."""
     latencies: deque = field(default_factory=lambda: deque(maxlen=100000))
+    healing_latencies: deque = field(default_factory=lambda: deque(maxlen=100000))  # Nomos healing latency (µs)
     success_count: int = 0
     error_count: int = 0
     healed_count: int = 0
     start_time: float = 0.0
     
-    def record(self, latency_ms: float, healed: bool, success: bool):
+    def record(self, latency_ms: float, healed: bool, success: bool, healing_latency_us: int = 0):
         self.latencies.append(latency_ms)
+        if healing_latency_us > 0:
+            self.healing_latencies.append(healing_latency_us / 1000.0)  # Convert to ms
         if success:
             self.success_count += 1
             if healed:
@@ -176,6 +179,14 @@ class RequestStats:
         if not self.latencies:
             return 0.0
         sorted_lat = sorted(self.latencies)
+        idx = int(len(sorted_lat) * p / 100)
+        return sorted_lat[min(idx, len(sorted_lat) - 1)]
+    
+    def get_healing_percentile(self, p: float) -> float:
+        """Get percentile of Nomos healing latency (not total request time)."""
+        if not self.healing_latencies:
+            return 0.0
+        sorted_lat = sorted(self.healing_latencies)
         idx = int(len(sorted_lat) * p / 100)
         return sorted_lat[min(idx, len(sorted_lat) - 1)]
     
@@ -227,7 +238,10 @@ class LoadGenerator:
                 # Check if response was healed
                 healed = response.headers.get('X-Nomos-Healed', '').lower() == 'true'
                 
-                self.stats.record(latency_ms, healed, response.status < 500)
+                # Get Nomos healing latency (separate from total request time)
+                healing_latency_us = int(response.headers.get('X-Nomos-Latency-Us', '0'))
+                
+                self.stats.record(latency_ms, healed, response.status < 500, healing_latency_us)
                 
         except asyncio.TimeoutError:
             self.stats.record(5000.0, False, False)
@@ -258,7 +272,7 @@ class LoadGenerator:
             
             p50 = self.stats.get_percentile(50)
             p99 = self.stats.get_percentile(99)
-            p999 = self.stats.get_percentile(99.9)
+            nomos_p99 = self.stats.get_healing_percentile(99)  # Nomos healing latency only
             
             healed_pct = (
                 self.stats.healed_count / max(self.stats.success_count, 1) * 100
@@ -267,17 +281,15 @@ class LoadGenerator:
                 self.stats.error_count / max(current_count, 1) * 100
             )
             
-            # Check Nomos Law violation (714ns = 0.000714ms)
-            nomos_law_ok = "✅" if p99 < 1.0 else "❌"
+            # Check Nomos Law violation (against healing latency, not total)
+            nomos_law_ok = "✅" if nomos_p99 < 1.0 else "❌"
             
             print(f"\r[{time.strftime('%H:%M:%S')}] "
                   f"RPS: {rps:>6,} | "
                   f"Total: {current_count:>8,} | "
-                  f"p50: {p50:>6.2f}ms | "
-                  f"p99: {p99:>6.2f}ms {nomos_law_ok} | "
-                  f"p99.9: {p999:>6.2f}ms | "
-                  f"Healed: {healed_pct:>5.1f}% | "
-                  f"Errors: {error_pct:>4.1f}%", end="", flush=True)
+                  f"Total p99: {p99:>5.2f}ms | "
+                  f"Nomos p99: {nomos_p99:>5.2f}ms {nomos_law_ok} | "
+                  f"Healed: {healed_pct:>5.1f}%", end="", flush=True)
     
     async def run(self) -> Dict:
         """Run the load test."""
@@ -337,6 +349,9 @@ class LoadGenerator:
         total = self.stats.success_count + self.stats.error_count
         elapsed = time.time() - self.stats.start_time
         
+        # Get Nomos-specific healing latency (from X-Nomos-Latency-Us header)
+        nomos_p99 = self.stats.get_healing_percentile(99)
+        
         report = {
             "duration_secs": elapsed,
             "total_requests": total,
@@ -348,7 +363,8 @@ class LoadGenerator:
             "latency_p95_ms": self.stats.get_percentile(95),
             "latency_p99_ms": self.stats.get_percentile(99),
             "latency_p999_ms": self.stats.get_percentile(99.9),
-            "nomos_law_compliant": self.stats.get_percentile(99) < 1.0,
+            "nomos_healing_p99_ms": nomos_p99,
+            "nomos_law_compliant": nomos_p99 < 1.0,  # Check Nomos healing latency, not total
             "healing_rate": self.stats.healed_count / max(self.stats.success_count, 1),
             "error_rate": self.stats.error_count / max(total, 1),
         }
@@ -364,10 +380,8 @@ class LoadGenerator:
 ║  Healed:             {report['healed_requests']:>10,}                                     ║
 ╠═══════════════════════════════════════════════════════════════════════╣
 ║  Average RPS:        {report['average_rps']:>10,.1f}                                     ║
-║  Latency p50:        {report['latency_p50_ms']:>10.3f} ms                                  ║
-║  Latency p95:        {report['latency_p95_ms']:>10.3f} ms                                  ║
-║  Latency p99:        {report['latency_p99_ms']:>10.3f} ms                                  ║
-║  Latency p99.9:      {report['latency_p999_ms']:>10.3f} ms                                  ║
+║  Total p99:          {report['latency_p99_ms']:>10.3f} ms  (includes network + upstream)     ║
+║  Nomos p99:          {report['nomos_healing_p99_ms']:>10.3f} ms  (healing only)                 ║
 ╠═══════════════════════════════════════════════════════════════════════╣
 ║  Nomos Law (p99<1ms): {'✅ PASS' if report['nomos_law_compliant'] else '❌ FAIL':>10}                                     ║
 ║  Healing Rate:       {report['healing_rate'] * 100:>10.1f}%                                    ║

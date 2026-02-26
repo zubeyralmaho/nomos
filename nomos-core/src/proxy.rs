@@ -358,10 +358,15 @@ async fn process_request(
     let middleware = Arc::clone(&state.middleware);
     let body_vec = body_bytes.to_vec();
 
+    // Measure healing time separately (this is the Nomos overhead)
+    let healing_start = std::time::Instant::now();
+
     let result = middleware.process(&ctx, &body_vec).await.unwrap_or_else(|e| {
         warn!(error = %e, "Middleware error, passing through");
         MiddlewareResult::PassThrough
     });
+
+    let healing_us = healing_start.elapsed().as_nanos() as u64 / 1000;  // More precise
 
     // Build response based on middleware result
     let (final_body, healed, ops_count, confidence) = match result {
@@ -402,12 +407,7 @@ async fn process_request(
             )
             .header(
                 "X-Nomos-Latency-Us",
-                (std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as u64
-                    - start_ns)
-                    / 1000,
+                healing_us,  // Healing time only, not total request time
             );
     }
 

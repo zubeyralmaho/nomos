@@ -6,9 +6,9 @@ description = "Nomos XDP/eBPF program for kernel-level packet classification"
 license = "MIT"
 
 [dependencies]
-# eBPF kernel-space framework
-aya-ebpf = "0.1"
-aya-log-ebpf = "0.1"
+# eBPF kernel-space framework (use latest Aya)
+aya-ebpf = { git = "https://github.com/aya-rs/aya", branch = "main" }
+aya-log-ebpf = { git = "https://github.com/aya-rs/aya", branch = "main" }
 
 # Shared types with userspace
 nomos-ebpf-common = { path = "../nomos-ebpf-common" }

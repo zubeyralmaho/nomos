@@ -47,6 +47,11 @@ class DriftMode(Enum):
     V2 = "v2"             # API v2 style renames
     CAMEL = "camel"       # camelCase conversion
     NESTED = "nested"     # Restructured to nested format
+    DEEP_NESTED = "deep"  # Deep nested (5+ levels)
+    TYPO = "typo"         # Common typos in field names
+    ABBREV = "abbrev"     # Heavy abbreviations
+    LEGACY = "legacy"     # Legacy naming conventions
+    MIXED = "mixed"       # Mix of different drifts
     RANDOM = "random"     # Random drift per request
 
 
@@ -152,11 +157,184 @@ def get_nested_response(user_id: str = None) -> Dict[str, Any]:
     }
 
 
+def get_deep_nested_response(user_id: str = None) -> Dict[str, Any]:
+    """Deep nested structure (5+ levels)."""
+    return {
+        "response": {
+            "data": {
+                "user": {
+                    "id": user_id or generate_user_id(),
+                    "identity": {
+                        "personal": {
+                            "name": {
+                                "first": "Alice",
+                                "last": "Smith",
+                                "full": "Alice Smith"
+                            },
+                            "contact": {
+                                "email": {
+                                    "primary": "alice@example.com",
+                                    "verified": True
+                                },
+                                "phone": {
+                                    "mobile": "+1-555-1234",
+                                    "verified": False
+                                }
+                            },
+                            "location": {
+                                "address": {
+                                    "street": "123 Main St",
+                                    "city": "New York",
+                                    "country": "USA",
+                                    "postal": "10001"
+                                }
+                            }
+                        }
+                    },
+                    "financial": {
+                        "accounts": {
+                            "primary": {
+                                "balance": {
+                                    "amount": 1500.50,
+                                    "currency": "USD"
+                                },
+                                "status": "active"
+                            }
+                        }
+                    },
+                    "metadata": {
+                        "audit": {
+                            "timestamps": {
+                                "created": datetime.now().isoformat(),
+                                "updated": datetime.now().isoformat(),
+                                "last_login": datetime.now().isoformat()
+                            },
+                            "source": {
+                                "origin": "api",
+                                "version": "v3"
+                            }
+                        }
+                    }
+                }
+            },
+            "status": {
+                "code": 200,
+                "message": "success"
+            }
+        },
+        "meta": {
+            "pagination": {
+                "page": 1,
+                "total": 1
+            }
+        }
+    }
+
+
+def get_typo_response(user_id: str = None) -> Dict[str, Any]:
+    """Common typos in field names."""
+    return {
+        "user_id": user_id or generate_user_id(),
+        "full_name": "Alice Smith",
+        "emial": "alice@example.com",       # typo: email -> emial
+        "adress": "123 Main St",            # typo: address -> adress
+        "account_balance": 1500.50,
+        "is_verified": True,
+        "created_at": datetime.now().isoformat(),
+        "desciption": "Premium user account",  # typo: description -> desciption
+        "preferences": {
+            "theme": "dark",
+            "notifications": True,
+            "language": "en"
+        },
+        "tags": ["premium", "active"],
+        "metadata": {
+            "version": 1,
+            "source": "api"
+        }
+    }
+
+
+def get_abbrev_response(user_id: str = None) -> Dict[str, Any]:
+    """Heavy abbreviations (common in legacy systems)."""
+    return {
+        "uid": user_id or generate_user_id(),
+        "nm": "Alice Smith",                # name
+        "eml": "alice@example.com",         # email
+        "addr": "123 Main St",              # address
+        "acct_bal": 1500.50,                # account_balance
+        "sts": "active",                    # status
+        "ts": datetime.now().isoformat(),   # timestamp
+        "desc": "Premium user",             # description
+        "prefs": {
+            "thm": "dark",                  # theme
+            "notif": True,                  # notifications
+            "lng": "en"                     # language
+        },
+        "tgs": ["premium", "active"],       # tags
+        "mt": {                             # metadata
+            "ver": 1,
+            "src": "api"
+        }
+    }
+
+
+def get_legacy_response(user_id: str = None) -> Dict[str, Any]:
+    """Legacy naming conventions (Rails/Django style)."""
+    return {
+        "_id": user_id or generate_user_id(),
+        "name": "Alice Smith",
+        "email": "alice@example.com",
+        "balance": 1500.50,
+        "active": True,                     # is_verified -> active
+        "created_on": datetime.now().isoformat(),  # created_at -> created_on
+        "modified_on": datetime.now().isoformat(), # updated_at -> modified_on
+        "date_joined": datetime.now().isoformat(), # Django style
+        "preference": {                     # singular instead of plural
+            "theme": "dark",
+            "notification": True,           # singular
+            "lang": "en"
+        },
+        "tag": ["premium", "active"],       # singular
+        "meta": {
+            "ver": 1,
+            "src": "api"
+        }
+    }
+
+
+def get_mixed_response(user_id: str = None) -> Dict[str, Any]:
+    """Mix of different drift patterns."""
+    return {
+        "userId": user_id or generate_user_id(),   # camelCase
+        "fullName": "Alice Smith",                  # camelCase
+        "emial": "alice@example.com",              # typo
+        "acct_bal": 1500.50,                       # abbreviation
+        "active": True,                            # legacy
+        "created": datetime.now().isoformat(),     # v2 style
+        "prefs": {                                 # abbreviation
+            "theme": "dark",
+            "notifs": True,                        # abbreviation
+            "lang": "en"                           # abbreviation
+        },
+        "label": ["premium", "active"],            # singular
+        "mt": {                                    # abbreviation
+            "version": 1,
+            "src": "api"                           # abbreviation
+        }
+    }
+
+
 DRIFT_GENERATORS = {
     DriftMode.HEALTHY: get_healthy_response,
     DriftMode.V2: get_v2_response,
     DriftMode.CAMEL: get_camel_response,
     DriftMode.NESTED: get_nested_response,
+    DriftMode.DEEP_NESTED: get_deep_nested_response,
+    DriftMode.TYPO: get_typo_response,
+    DriftMode.ABBREV: get_abbrev_response,
+    DriftMode.LEGACY: get_legacy_response,
+    DriftMode.MIXED: get_mixed_response,
 }
 
 
@@ -207,7 +385,11 @@ class UpstreamServer:
         # Select drift mode
         mode = self.drift_mode
         if mode == DriftMode.RANDOM:
-            mode = random.choice([DriftMode.HEALTHY, DriftMode.V2, DriftMode.CAMEL])
+            # Random choice from all flat modes (not NESTED)
+            mode = random.choice([
+                DriftMode.HEALTHY, DriftMode.V2, DriftMode.CAMEL,
+                DriftMode.TYPO, DriftMode.ABBREV, DriftMode.LEGACY, DriftMode.MIXED
+            ])
         
         # Generate response
         generator = DRIFT_GENERATORS.get(mode, get_v2_response)
@@ -236,7 +418,10 @@ class UpstreamServer:
         
         mode = self.drift_mode
         if mode == DriftMode.RANDOM:
-            mode = random.choice([DriftMode.HEALTHY, DriftMode.V2, DriftMode.CAMEL])
+            mode = random.choice([
+                DriftMode.HEALTHY, DriftMode.V2, DriftMode.CAMEL,
+                DriftMode.TYPO, DriftMode.ABBREV, DriftMode.LEGACY, DriftMode.MIXED
+            ])
         
         generator = DRIFT_GENERATORS.get(mode, get_v2_response)
         response_data = generator()
@@ -292,8 +477,8 @@ def main():
         "--drift-mode", "-m",
         type=str,
         default="v2",
-        choices=["healthy", "v2", "camel", "nested", "random"],
-        help="Drift mode (default: v2)"
+        choices=["healthy", "v2", "camel", "nested", "deep", "typo", "abbrev", "legacy", "mixed", "random"],
+        help="Drift mode: healthy|v2|camel|nested|deep|typo|abbrev|legacy|mixed|random (default: v2)"
     )
     
     args = parser.parse_args()

@@ -201,12 +201,130 @@ impl ResponseMiddleware for FingerprintCheckMiddleware {
 // WASM Healing Middleware
 // ============================================================================
 
+/// Nested path transformation rule.
+/// Maps a source JSON path to a target key or path.
+#[derive(Clone, Debug)]
+struct NestedPathRule {
+    /// Source path (e.g., "user.profile.name" or "account.balance")
+    source_path: Vec<&'static str>,
+    /// Target key (e.g., "full_name" or "account_balance")
+    target_key: &'static str,
+}
+
+impl NestedPathRule {
+    fn new(source: &'static str, target: &'static str) -> Self {
+        Self {
+            source_path: source.split('.').collect(),
+            target_key: target,
+        }
+    }
+}
+
+/// Default nested path healing rules.
+/// Maps nested structures to flat expected schema.
+fn build_nested_path_rules() -> Vec<NestedPathRule> {
+    vec![
+        // ============================================================
+        // Level 2 - Basic nested objects
+        // ============================================================
+        
+        // User object flattening
+        NestedPathRule::new("user.id", "user_id"),
+        NestedPathRule::new("user.profile.name", "full_name"),
+        NestedPathRule::new("user.profile.email", "email_address"),
+        NestedPathRule::new("user.profile.firstName", "first_name"),
+        NestedPathRule::new("user.profile.lastName", "last_name"),
+        NestedPathRule::new("user.status.verified", "is_verified"),
+        NestedPathRule::new("user.status.active", "is_active"),
+        
+        // Account object flattening
+        NestedPathRule::new("account.balance", "account_balance"),
+        NestedPathRule::new("account.currency", "currency"),
+        NestedPathRule::new("account.type", "account_type"),
+        
+        // Timestamp flattening
+        NestedPathRule::new("timestamps.created", "created_at"),
+        NestedPathRule::new("timestamps.updated", "updated_at"),
+        NestedPathRule::new("timestamps.deleted", "deleted_at"),
+        NestedPathRule::new("meta.created", "created_at"),
+        NestedPathRule::new("meta.updated", "updated_at"),
+        
+        // ============================================================
+        // Level 3 - Data/Response wrappers
+        // ============================================================
+        
+        NestedPathRule::new("data.user_id", "user_id"),
+        NestedPathRule::new("data.id", "user_id"),
+        NestedPathRule::new("data.name", "full_name"),
+        NestedPathRule::new("data.email", "email_address"),
+        NestedPathRule::new("data.balance", "account_balance"),
+        NestedPathRule::new("data.user.id", "user_id"),
+        NestedPathRule::new("data.user.name", "full_name"),
+        NestedPathRule::new("data.user.email", "email_address"),
+        
+        NestedPathRule::new("response.user_id", "user_id"),
+        NestedPathRule::new("response.data.user_id", "user_id"),
+        NestedPathRule::new("response.data.id", "user_id"),
+        NestedPathRule::new("response.data.user.id", "user_id"),
+        NestedPathRule::new("result.user_id", "user_id"),
+        NestedPathRule::new("result.data.user_id", "user_id"),
+        
+        // ============================================================
+        // Level 4-5 - Deep nested user identity
+        // ============================================================
+        
+        // response.data.user.identity.personal.name.full → full_name
+        NestedPathRule::new("response.data.user.identity.personal.name.full", "full_name"),
+        NestedPathRule::new("response.data.user.identity.personal.name.first", "first_name"),
+        NestedPathRule::new("response.data.user.identity.personal.name.last", "last_name"),
+        
+        // response.data.user.identity.personal.contact.email.primary → email_address
+        NestedPathRule::new("response.data.user.identity.personal.contact.email.primary", "email_address"),
+        NestedPathRule::new("response.data.user.identity.personal.contact.email.verified", "email_verified"),
+        NestedPathRule::new("response.data.user.identity.personal.contact.phone.mobile", "phone_number"),
+        
+        // response.data.user.identity.personal.location.address → address fields
+        NestedPathRule::new("response.data.user.identity.personal.location.address.street", "street_address"),
+        NestedPathRule::new("response.data.user.identity.personal.location.address.city", "city"),
+        NestedPathRule::new("response.data.user.identity.personal.location.address.country", "country"),
+        NestedPathRule::new("response.data.user.identity.personal.location.address.postal", "postal_code"),
+        
+        // response.data.user.financial.accounts.primary.balance → account_balance
+        NestedPathRule::new("response.data.user.financial.accounts.primary.balance.amount", "account_balance"),
+        NestedPathRule::new("response.data.user.financial.accounts.primary.balance.currency", "currency"),
+        NestedPathRule::new("response.data.user.financial.accounts.primary.status", "account_status"),
+        
+        // response.data.user.metadata.audit.timestamps → timestamps
+        NestedPathRule::new("response.data.user.metadata.audit.timestamps.created", "created_at"),
+        NestedPathRule::new("response.data.user.metadata.audit.timestamps.updated", "updated_at"),
+        NestedPathRule::new("response.data.user.metadata.audit.timestamps.last_login", "last_login_at"),
+        NestedPathRule::new("response.data.user.metadata.audit.source.origin", "source"),
+        NestedPathRule::new("response.data.user.metadata.audit.source.version", "api_version"),
+        
+        // Direct path from response.data.user
+        NestedPathRule::new("response.data.user.id", "user_id"),
+        
+        // ============================================================
+        // Settings → Preferences rename
+        // ============================================================
+        NestedPathRule::new("settings.theme", "preferences.theme"),
+        NestedPathRule::new("settings.notifications", "preferences.notifications"),
+        NestedPathRule::new("settings.language", "preferences.language"),
+        
+        // Body wrapper flattening
+        NestedPathRule::new("body.user_id", "user_id"),
+        NestedPathRule::new("payload.user_id", "user_id"),
+    ]
+}
+
 /// Default healing rules for common drift patterns.
 /// 
 /// These map drifted field names back to expected schema fields.
 fn build_default_healing_rules() -> Vec<(&'static str, &'static str)> {
     vec![
+        // ============================================================
         // API v2 style renames (upstream_server.py v2 mode)
+        // ============================================================
         ("uuid", "user_id"),
         ("name", "full_name"),
         ("email", "email_address"),
@@ -221,16 +339,149 @@ fn build_default_healing_rules() -> Vec<(&'static str, &'static str)> {
         ("ver", "version"),
         ("src", "source"),
         
-        // CamelCase to snake_case (upstream_server.py camel mode)
+        // ============================================================
+        // CamelCase to snake_case (Java/JS APIs)
+        // ============================================================
         ("userId", "user_id"),
         ("fullName", "full_name"),
         ("emailAddress", "email_address"),
         ("accountBalance", "account_balance"),
         ("isVerified", "is_verified"),
         ("createdAt", "created_at"),
+        ("updatedAt", "updated_at"),
+        ("firstName", "first_name"),
+        ("lastName", "last_name"),
+        ("phoneNumber", "phone_number"),
+        ("dateOfBirth", "date_of_birth"),
+        ("postalCode", "postal_code"),
+        ("streetAddress", "street_address"),
+        ("createdBy", "created_by"),
+        ("modifiedBy", "modified_by"),
         
-        // stress_test.py patterns
+        // ============================================================
+        // Common abbreviations
+        // ============================================================
         ("u_id", "user_id"),
+        ("usr_id", "user_id"),
+        ("uid", "user_id"),
+        ("acct_bal", "account_balance"),
+        ("acc_balance", "account_balance"),
+        ("amt", "amount"),
+        ("qty", "quantity"),
+        ("desc", "description"),
+        ("addr", "address"),
+        ("tel", "telephone"),
+        ("ph", "phone"),
+        ("msg", "message"),
+        ("pwd", "password"),
+        ("passwd", "password"),
+        ("usr", "user"),
+        ("grp", "group"),
+        ("org", "organization"),
+        ("dept", "department"),
+        ("cat", "category"),
+        ("subcat", "subcategory"),
+        ("img", "image"),
+        ("pic", "picture"),
+        ("sts", "status"),
+        ("stat", "status"),
+        ("ts", "timestamp"),
+        ("dt", "datetime"),
+        ("dob", "date_of_birth"),
+        
+        // ============================================================
+        // Underscore variations
+        // ============================================================
+        ("username", "user_name"),
+        ("firstname", "first_name"),
+        ("lastname", "last_name"),
+        ("emailaddress", "email_address"),
+        ("phonenumber", "phone_number"),
+        ("streetaddress", "street_address"),
+        ("postalcode", "postal_code"),
+        ("createdat", "created_at"),
+        ("updatedat", "updated_at"),
+        ("deletedat", "deleted_at"),
+        
+        // ============================================================
+        // Pluralization issues
+        // ============================================================
+        ("tag", "tags"),
+        ("label", "labels"),
+        ("role", "roles"),
+        ("permission", "permissions"),
+        ("preference", "preferences"),
+        ("setting", "settings"),
+        ("option", "options"),
+        ("item", "items"),
+        ("result", "results"),
+        ("error", "errors"),
+        ("warning", "warnings"),
+        
+        // ============================================================
+        // Common typos
+        // ============================================================
+        ("adress", "address"),
+        ("addres", "address"),
+        ("adddress", "address"),
+        ("emial", "email"),
+        ("emal", "email"),
+        ("emali", "email"),
+        ("mesage", "message"),
+        ("messge", "message"),
+        ("recieve", "receive"),
+        ("recieved", "received"),
+        ("occured", "occurred"),
+        ("reponse", "response"),
+        ("respone", "response"),
+        ("desciption", "description"),
+        ("decription", "description"),
+        ("lenght", "length"),
+        ("widht", "width"),
+        ("heigth", "height"),
+        
+        // ============================================================
+        // Legacy/alternative naming
+        // ============================================================
+        ("id", "user_id"),           // Generic id -> specific
+        ("ID", "user_id"),
+        ("_id", "user_id"),          // MongoDB style
+        ("pk", "id"),                // Primary key
+        ("oid", "object_id"),        // Object ID
+        ("guid", "uuid"),
+        ("active", "is_active"),
+        ("enabled", "is_enabled"),
+        ("deleted", "is_deleted"),
+        ("archived", "is_archived"),
+        ("visible", "is_visible"),
+        ("public", "is_public"),
+        ("private", "is_private"),
+        ("admin", "is_admin"),
+        ("superuser", "is_superuser"),
+        
+        // ============================================================
+        // Date/time variations
+        // ============================================================
+        ("create_time", "created_at"),
+        ("update_time", "updated_at"),
+        ("delete_time", "deleted_at"),
+        ("create_date", "created_at"),
+        ("update_date", "updated_at"),
+        ("modify_date", "modified_at"),
+        ("modified", "modified_at"),
+        ("timestamp", "created_at"),
+        ("time", "timestamp"),
+        
+        // ============================================================
+        // API framework variations (Rails, Django, etc.)
+        // ============================================================
+        ("created_on", "created_at"),
+        ("updated_on", "updated_at"),
+        ("modified_on", "modified_at"),
+        ("date_joined", "created_at"),   // Django
+        ("last_login", "last_login_at"),
+        ("date_created", "created_at"),
+        ("date_modified", "modified_at"),
     ]
 }
 
@@ -283,6 +534,12 @@ impl FastPathHealer {
         // Sort by search length descending for greedy matching
         patterns.sort_by(|a, b| b.search.len().cmp(&a.search.len()));
         
+        info!(
+            patterns_count = patterns.len(),
+            first_pattern = ?patterns.first().map(|p| String::from_utf8_lossy(&p.search).to_string()),
+            "FastPathHealer initialized"
+        );
+        
         Self { patterns }
     }
     
@@ -291,7 +548,12 @@ impl FastPathHealer {
     /// Returns (healed_bytes, ops_count) or None if healing not possible.
     #[inline]
     fn heal(&self, input: &[u8]) -> Option<(Vec<u8>, u32)> {
-        if input.is_empty() {
+        if input.is_empty() || self.patterns.is_empty() {
+            debug!(
+                input_len = input.len(),
+                patterns_count = self.patterns.len(),
+                "FastPathHealer: empty input or no patterns"
+            );
             return None;
         }
         
@@ -326,7 +588,181 @@ impl FastPathHealer {
         }
         
         if ops_count > 0 {
+            debug!(ops_count, "FastPathHealer: healed");
             Some((output, ops_count))
+        } else {
+            None
+        }
+    }
+}
+
+// ============================================================================
+// Nested JSON Healer (Path-aware transformations)
+// ============================================================================
+
+/// Nested JSON healer for path-based transformations.
+/// 
+/// Handles complex structural changes like flattening nested objects:
+/// - `user.profile.name` → `full_name`
+/// - `account.balance` → `account_balance`
+/// - `settings` → `preferences`
+struct NestedJsonHealer {
+    /// Path transformation rules
+    rules: Vec<NestedPathRule>,
+}
+
+impl NestedJsonHealer {
+    fn new() -> Self {
+        Self {
+            rules: build_nested_path_rules(),
+        }
+    }
+
+    /// Check if JSON has nested structure markers (heuristic).
+    #[inline]
+    fn has_nested_structure(json: &[u8]) -> bool {
+        // Look for common nested wrapper keys (with or without space after colon)
+        let markers = [
+            b"\"user\":" as &[u8],
+            b"\"account\":",
+            b"\"data\":",
+            b"\"response\":",
+            b"\"result\":",
+            b"\"payload\":",
+            b"\"timestamps\":",
+            b"\"profile\":",
+            b"\"settings\":",
+        ];
+        
+        for marker in &markers {
+            if Self::contains_bytes(json, marker) {
+                // Also check if followed by object opening (with optional whitespace)
+                if let Some(pos) = Self::find_bytes(json, marker) {
+                    let rest = &json[pos + marker.len()..];
+                    // Skip whitespace and check for '{'
+                    for &b in rest.iter().take(10) {
+                        if b == b'{' {
+                            return true;
+                        }
+                        if b != b' ' && b != b'\t' && b != b'\n' && b != b'\r' {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Find position of byte sequence.
+    #[inline]
+    fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        if needle.len() > haystack.len() {
+            return None;
+        }
+        haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    /// Simple byte sequence search.
+    #[inline]
+    fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+        if needle.len() > haystack.len() {
+            return false;
+        }
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    /// Heal nested JSON by flattening according to rules.
+    /// 
+    /// Returns (healed_bytes, ops_count) or None if no nested healing needed.
+    fn heal(&self, input: &[u8]) -> Option<(Vec<u8>, u32)> {
+        // Quick check: does this look like nested JSON?
+        if !Self::has_nested_structure(input) {
+            return None;
+        }
+
+        // Parse JSON
+        let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(input) else {
+            return None;
+        };
+
+        let serde_json::Value::Object(ref mut root) = value else {
+            return None;
+        };
+
+        let mut ops_count = 0u32;
+        let mut extracted = serde_json::Map::new();
+
+        // Apply path extraction rules
+        for rule in &self.rules {
+            if let Some(val) = self.extract_path(root, &rule.source_path) {
+                // Handle nested target paths (e.g., "preferences.theme")
+                if rule.target_key.contains('.') {
+                    let parts: Vec<&str> = rule.target_key.split('.').collect();
+                    if parts.len() == 2 {
+                        let parent = extracted
+                            .entry(parts[0])
+                            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                        if let serde_json::Value::Object(ref mut obj) = parent {
+                            obj.insert(parts[1].to_string(), val);
+                            ops_count += 1;
+                        }
+                    }
+                } else {
+                    extracted.insert(rule.target_key.to_string(), val);
+                    ops_count += 1;
+                }
+            }
+        }
+
+        if ops_count == 0 {
+            return None;
+        }
+
+        // Copy non-extracted top-level fields
+        for (key, val) in root.iter() {
+            // Skip wrapper objects that we've flattened
+            match key.as_str() {
+                "user" | "account" | "timestamps" | "data" | "response" | "result" | "payload" 
+                    if val.is_object() => continue,
+                "settings" if val.is_object() && extracted.contains_key("preferences") => continue,
+                _ => {
+                    if !extracted.contains_key(key) {
+                        extracted.insert(key.clone(), val.clone());
+                    }
+                }
+            }
+        }
+
+        // Serialize back to JSON
+        let output = serde_json::to_vec(&serde_json::Value::Object(extracted)).ok()?;
+        
+        debug!(
+            ops_count,
+            input_len = input.len(),
+            output_len = output.len(),
+            "NestedJsonHealer: flattened structure"
+        );
+
+        Some((output, ops_count))
+    }
+
+    /// Extract a value from a nested path.
+    fn extract_path(&self, obj: &serde_json::Map<String, serde_json::Value>, path: &[&str]) -> Option<serde_json::Value> {
+        if path.is_empty() {
+            return None;
+        }
+
+        let first = path[0];
+        let value = obj.get(first)?;
+
+        if path.len() == 1 {
+            return Some(value.clone());
+        }
+
+        // Recurse into nested object
+        if let serde_json::Value::Object(ref inner) = value {
+            self.extract_path(inner, &path[1..])
         } else {
             None
         }
@@ -408,9 +844,10 @@ fn extract_json_keys(json: &[u8]) -> Vec<String> {
 /// Rule-based healing middleware using WASM for JSON transformation.
 /// 
 /// This middleware:
-/// 1. Tries fast-path pure Rust healing first (sub-100µs)
-/// 2. Falls back to WASM only for complex transformations
-/// 3. Uses pre-compiled patterns for maximum speed
+/// 1. Tries nested JSON healer first (for structural changes)
+/// 2. Tries fast-path pure Rust healing (for key renames)
+/// 3. Falls back to WASM only for complex transformations
+/// 4. Uses pre-compiled patterns for maximum speed
 pub struct WasmHealingMiddleware {
     /// WASM module registry for healer instances (fallback)
     wasm_registry: Arc<ModuleRegistry>,
@@ -420,6 +857,9 @@ pub struct WasmHealingMiddleware {
     
     /// Fast-path healer (pure Rust, no WASM)
     fast_healer: RwLock<FastPathHealer>,
+    
+    /// Nested JSON healer (for structural flattening)
+    nested_healer: NestedJsonHealer,
     
     /// Semantic healer for advanced matching (when rules don't match)
     semantic_healer: RwLock<SemanticHealer>,
@@ -471,15 +911,20 @@ impl WasmHealingMiddleware {
         // Create fast-path healer with pre-compiled patterns
         let fast_healer = FastPathHealer::new(&rules);
         
+        // Create nested JSON healer for structural transformations
+        let nested_healer = NestedJsonHealer::new();
+        
         info!(
             rules_count = rules.len(),
-            "Initialized WasmHealingMiddleware with fast-path healing"
+            nested_rules_count = nested_healer.rules.len(),
+            "Initialized WasmHealingMiddleware with fast-path and nested healing"
         );
         
         Self {
             wasm_registry,
             healing_rules: RwLock::new(rules),
             fast_healer: RwLock::new(fast_healer),
+            nested_healer,
             semantic_healer: RwLock::new(healer),
             confidence_threshold: 0.65,
         }
@@ -524,17 +969,40 @@ impl ResponseMiddleware for WasmHealingMiddleware {
                 return Ok(MiddlewareResult::PassThrough);
             }
             
-            // FAST PATH: Pure Rust byte-level key replacement
-            // This avoids WASM invocation entirely for common patterns
+            let mut current_body: Vec<u8>;
+            let mut total_ops: u32 = 0;
+            
+            // PHASE 1: Nested JSON healing (structural flattening)
+            // Try to flatten nested structures first
+            let body_for_fast = if let Some((flattened, ops)) = self.nested_healer.heal(body) {
+                total_ops += ops;
+                current_body = flattened;
+                &current_body[..]
+            } else {
+                body
+            };
+            
+            // PHASE 2: Fast-path key replacement
+            // Apply simple key renames on the (possibly flattened) body
             {
                 let fast_healer = self.fast_healer.read();
-                if let Some((healed_body, ops_count)) = fast_healer.heal(body) {
+                if let Some((healed_body, ops_count)) = fast_healer.heal(body_for_fast) {
+                    total_ops += ops_count;
                     return Ok(MiddlewareResult::Transformed {
                         body: Bytes::from(healed_body),
-                        ops_count,
+                        ops_count: total_ops,
                         confidence: 1.0,
                     });
                 }
+            }
+            
+            // If we had nested healing but no fast-path, return nested result
+            if total_ops > 0 {
+                return Ok(MiddlewareResult::Transformed {
+                    body: Bytes::from(body_for_fast.to_vec()),
+                    ops_count: total_ops,
+                    confidence: 1.0,
+                });
             }
             
             // No healing needed - pass through
