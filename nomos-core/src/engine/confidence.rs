@@ -4,9 +4,6 @@
 //! - Vector similarity from trigram embeddings
 //! - Type compatibility for JSON types
 //! - Full NLP ensemble scoring
-//!
-//! Academic References:
-//! - Levenshtein (1966), Winkler (1990), Salton & McGill (1983)
 
 use crate::nlp::combined_nlp_similarity;
 use crate::engine::embedding::FieldEmbedding;
@@ -30,15 +27,12 @@ pub struct MatchConfidence {
 impl MatchConfidence {
     /// Compute confidence for a field match.
     ///
-    /// Uses FULL ACADEMIC NLP ENSEMBLE:
+    /// Uses NLP ENSEMBLE:
     /// 1. Levenshtein Distance - edit distance for typo detection
     /// 2. Jaro-Winkler Similarity - prefix-aware string matching
     /// 3. N-gram TF-IDF - structural similarity via trigrams
     /// 4. Synonym Dictionary - semantic equivalence lookup
     /// 5. Type Compatibility - JSON type coercion feasibility
-    ///
-    /// Reference algorithms from:
-    /// - Levenshtein (1966), Winkler (1990), Salton & McGill (1983)
     pub fn compute(old_field: &FieldEmbedding, new_field: &FieldEmbedding) -> Self {
         // FULL NLP ENSEMBLE (Levenshtein + Jaro-Winkler + TF-IDF + Synonym)
         let nlp_score = combined_nlp_similarity(&old_field.field_name, &new_field.field_name);

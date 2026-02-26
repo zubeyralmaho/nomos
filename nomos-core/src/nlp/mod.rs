@@ -1,17 +1,17 @@
-//! NLP Module - Academic-Grade String Similarity Algorithms
+//! NLP Module - String Similarity Algorithms
 //!
-//! This module provides a collection of well-established NLP algorithms
-//! for string similarity matching, suitable for academic demonstration.
+//! This module provides a collection of proven algorithms
+//! for string similarity matching.
 //!
 //! # Algorithms
 //!
-//! | Algorithm | Reference | Complexity | Best For |
-//! |-----------|-----------|------------|----------|
-//! | [Levenshtein](levenshtein) | Levenshtein (1966) | O(m×n) | Typo detection |
-//! | [Jaro-Winkler](jaro) | Winkler (1990) | O(m×n) | Name matching |
-//! | [TF-IDF](tfidf) | Salton & McGill (1983) | O(n) | Structural sim |
-//! | [Synonym](synonym) | Dictionary lookup | O(1) | Semantic match |
-//! | [Combined](combined) | Weighted ensemble | O(m×n) | Robust matching |
+//! | Algorithm | Complexity | Best For |
+//! |-----------|------------|----------|
+//! | [Levenshtein](levenshtein) | O(m×n) | Typo detection |
+//! | [Jaro-Winkler](jaro) | O(m×n) | Name matching |
+//! | [TF-IDF](tfidf) | O(n) | Structural sim |
+//! | [Synonym](synonym) | O(1) | Semantic match |
+//! | [Combined](combined) | O(m×n) | Robust matching |
 //!
 //! # Example
 //!

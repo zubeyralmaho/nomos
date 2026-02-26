@@ -131,7 +131,7 @@ python boundary_test.py --requests 200
 
 ### 6. NLP Algorithm Tests (Unit Tests)
 
-Academic NLP algorithms with proper citations for course evaluation.
+String similarity algorithms used for field name matching.
 
 ```bash
 # Run all NLP tests
@@ -146,14 +146,14 @@ cargo test -p nomos-core combined --release
 ```
 
 **Algorithms Tested:**
-| Algorithm | Reference | Test Cases |
-|-----------|-----------|------------|
-| Levenshtein Distance | Levenshtein (1966) | kitten→sitting, edit ops |
-| Jaro Similarity | Jaro (1989) | MARTHA→MARHTA, DWAYNE→DUANE |
-| Jaro-Winkler | Winkler (1990) | Prefix bonus verification |
-| N-gram TF-IDF | Salton & McGill (1983) | Trigram extraction, similarity |
-| Synonym Matching | Custom | user↔person, email↔mail |
-| Combined Ensemble | Custom | Weighted voting, threshold |
+| Algorithm | Test Cases |
+|-----------|------------|
+| Levenshtein Distance | kitten→sitting, edit ops |
+| Jaro Similarity | MARTHA→MARHTA, DWAYNE→DUANE |
+| Jaro-Winkler | Prefix bonus verification |
+| N-gram TF-IDF | Trigram extraction, similarity |
+| Synonym Matching | user↔person, email↔mail |
+| Combined Ensemble | Weighted voting, threshold |
 
 ### 7. Memory Leak Monitor (`memory_monitor.py`)
 

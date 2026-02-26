@@ -275,9 +275,9 @@ Kernel-level packet acceleration:
 
 ---
 
-## 10. Academic NLP Architecture (v0.2.0)
+## 10. NLP Architecture (v0.2.0)
 
-Version 0.2.0 introduces a **full academic NLP pipeline** suitable for NLP course demonstrations. The monolithic `engine.rs` (1956 lines) has been refactored into **13 modular files**.
+Version 0.2.0 modularizes the NLP pipeline. The monolithic `engine.rs` (1956 lines) has been refactored into **13 modular files**.
 
 ### 10.1 Module Structure
 
@@ -301,21 +301,21 @@ nomos-core/src/
     └── healer.rs            # SemanticHealer implementation
 ```
 
-### 10.2 NLP Algorithms Implemented
+### 10.2 NLP Algorithms
 
-| Algorithm | Reference | Complexity | Purpose |
-|-----------|-----------|------------|---------|
-| **Levenshtein Distance** | Levenshtein (1966) | O(m×n) | Typo detection, edit distance |
-| **Jaro-Winkler Similarity** | Winkler (1990) | O(m×n) | Prefix-aware field matching |
-| **N-gram TF-IDF** | Salton & McGill (1983) | O(n) | Structural similarity via trigrams |
-| **Synonym Dictionary** | Custom | O(1) | Semantic equivalence lookup |
-| **Combined Ensemble** | Custom | O(m×n) | Weighted voting of all algorithms |
+| Algorithm | Complexity | Purpose |
+|-----------|------------|---------|
+| **Levenshtein Distance** | O(m×n) | Typo detection, edit distance |
+| **Jaro-Winkler Similarity** | O(m×n) | Prefix-aware field matching |
+| **N-gram TF-IDF** | O(n) | Structural similarity via trigrams |
+| **Synonym Dictionary** | O(1) | Semantic equivalence lookup |
+| **Combined Ensemble** | O(m×n) | Weighted voting of all algorithms |
 
 ### 10.3 Algorithm Comparison Results
 
 ```
 ========================================
-ACADEMIC NLP ALGORITHM COMPARISON
+NLP ALGORITHM COMPARISON
 ========================================
 Pair                      Lev     Jaro      J-W   TF-IDF  Combined
 ------------------------------------------------------------------------
@@ -414,7 +414,7 @@ Unit Tests: 46/46 PASSED
 3. **Perfect accuracy:** 100% healing rate across all patterns
 4. **Full resilience:** Survives upstream failures, flapping, bursts
 5. **Deep nesting support:** 6+ level JSON flattening
-6. **Academic NLP:** 5 algorithms with proper citations
+6. **NLP ensemble:** 5 similarity algorithms
 7. **Modular architecture:** 13 files, clean separation of concerns
 
 ### Recommendations
@@ -423,7 +423,6 @@ Unit Tests: 46/46 PASSED
 2. **eBPF acceleration:** Enable for additional kernel-level optimization
 3. **Custom rules:** Add domain-specific healing patterns as needed
 4. **Monitoring:** Use X-Nomos-* headers for observability
-5. **Academic use:** NLP module suitable for course demonstrations
 
 ---
 
