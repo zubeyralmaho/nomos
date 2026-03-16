@@ -2,9 +2,10 @@
 
 > **It never stops.** Zero-latency, autonomous schema-healing proxy.
 
+[![Rust](https://img.shields.io/badge/rust-1.82%2B-orange?logo=rust)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-46%20passed-brightgreen)]()
-[![Rust](https://img.shields.io/badge/rust-1.82%2B-orange)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![p99 Latency](https://img.shields.io/badge/p99%20latency-0.22ms-success)]()
 
 ---
 
@@ -118,7 +119,7 @@ nomos-core/src/
 
 ### NLP Ensemble
 
-Nomos uses **5 NLP algorithms** in a weighted ensemble:
+Nomos uses **4 NLP algorithms** in a weighted ensemble:
 
 | Algorithm | Weight | Purpose |
 |-----------|--------|---------|
@@ -229,9 +230,18 @@ curl http://localhost:8080/api/user
 
 ## Documentation
 
-- [Architecture Specification](architecture.md) - Full engineering spec
-- [Benchmark Report](BENCHMARK_REPORT.md) - Performance data & NLP analysis
-- [Test Suite](tests/README.md) - Chaos & stress testing tools
+Comprehensive documentation is available in the [docs](docs/) folder:
+
+| Document | Description |
+|----------|-------------|
+| **[Getting Started](docs/GETTING_STARTED.md)** | Quick start guide for new users |
+| **[Architecture Guide](docs/ARCHITECTURE.md)** | Internal design and implementation details |
+| **[Deployment Guide](docs/DEPLOYMENT.md)** | Production deployment instructions |
+| **[API Reference](docs/API.md)** | Control plane API documentation |
+| **[FAQ](docs/FAQ.md)** | Frequently asked questions |
+| **[Test Suite](tests/README.md)** | Chaos & stress testing tools |
+| **[Benchmark Report](BENCHMARK_REPORT.md)** | Performance data & NLP analysis |
+| **[Contributing](CONTRIBUTING.md)** | Contribution guidelines |
 
 ---
 
@@ -286,12 +296,13 @@ TOKIO_WORKER_THREADS=8 ./target/release/nomos-core
 
 ## Contributing
 
-Contributions welcome! Please read the architecture spec before submitting PRs.
+Contributions welcome! Please read the [Contributing Guide](CONTRIBUTING.md) before submitting PRs.
 
 ```bash
 # Run tests before committing
 cargo test -p nomos-core
 cargo clippy -p nomos-core
+cargo fmt
 ```
 
 ---
@@ -299,4 +310,13 @@ cargo clippy -p nomos-core
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/zubeyralmaho/nomos/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/zubeyralmaho/nomos/discussions)
+- **Documentation**: [docs/](docs/)
+
 
