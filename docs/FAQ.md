@@ -56,7 +56,7 @@ Nomos uses **schema fingerprinting**:
 
 ### What NLP algorithms does Nomos use?
 
-Nomos uses a **weighted ensemble** of 5 algorithms:
+Nomos uses a **weighted ensemble** of 4 algorithms:
 
 | Algorithm | Weight | Best For |
 |-----------|--------|----------|

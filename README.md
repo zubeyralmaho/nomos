@@ -119,7 +119,7 @@ nomos-core/src/
 
 ### NLP Ensemble
 
-Nomos uses **5 NLP algorithms** in a weighted ensemble:
+Nomos uses **4 NLP algorithms** in a weighted ensemble:
 
 | Algorithm | Weight | Purpose |
 |-----------|--------|---------|

@@ -193,7 +193,7 @@ nomos/
 
 ## NLP Pipeline
 
-Nomos uses a **weighted ensemble** of 5 NLP algorithms to match field names with high accuracy.
+Nomos uses a **weighted ensemble** of 4 NLP algorithms to match field names with high accuracy.
 
 ### Algorithm Overview
 
@@ -203,6 +203,8 @@ Nomos uses a **weighted ensemble** of 5 NLP algorithms to match field names with
 | Jaro-Winkler | 25% | Prefix-aware matching | O(m×n) |
 | Levenshtein | 20% | Typo detection | O(m×n) |
 | TF-IDF N-grams | 20% | Structural similarity | O(n) |
+
+*Note: The `combined` module orchestrates these algorithms in a weighted ensemble.*
 
 ### Algorithm Details
 
